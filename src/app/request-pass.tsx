@@ -9,9 +9,12 @@ import {
   Text,
   TouchableOpacity,
   View,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useCreatePass, usePassesHistory, useRegisterProfile } from "../hooks/useRequestPasses";
 import { useProfileStore } from "../store/useProfileStore";
+import { useGuestProfileStore } from "../store/useGuestProfileStore";
 import { theme } from "../theme";
 
 // Extracted Modular Components
@@ -25,26 +28,30 @@ export default function RequestPassScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"request" | "history">("request");
 
-  // Zustand Store
+  // Zustand Stores
   const { profile, isLoadingProfile, loadProfile } = useProfileStore();
+  const { guestProfile, isLoadingGuest, loadGuestProfile } = useGuestProfileStore();
   const [showRegModal, setShowRegModal] = useState<boolean>(false);
 
+  const activeProfile = profile || guestProfile;
+
   // React Query Hooks
-  const { data: historyList = [] } = usePassesHistory(profile?.id);
-  console.log("DEBUG: Current Profile ID:", profile?.id);
+  const { data: historyList = [] } = usePassesHistory(activeProfile?.id);
+  console.log("DEBUG: Current Profile ID:", activeProfile?.id);
   console.log("DEBUG: Fetched Passes Count:", historyList.length, "passes");
   const createPass = useCreatePass();
   const registerProfile = useRegisterProfile();
 
   useEffect(() => {
     loadProfile();
+    loadGuestProfile();
   }, []);
 
   useEffect(() => {
-    if (!isLoadingProfile && !profile) {
+    if (!isLoadingProfile && !isLoadingGuest && !profile && !guestProfile) {
       setShowRegModal(true);
     }
-  }, [isLoadingProfile, profile]);
+  }, [isLoadingProfile, isLoadingGuest, profile, guestProfile]);
 
   const handleSaveProfile = (data: {
     fullName: string;
@@ -82,8 +89,10 @@ export default function RequestPassScreen() {
     flatNo: string;
     expiryHours: number;
     afterScanExpiry: string;
+    societyId?: string;
+    societyName?: string;
   }) => {
-    if (!profile) {
+    if (!activeProfile) {
       setShowRegModal(true);
       return;
     }
@@ -92,7 +101,7 @@ export default function RequestPassScreen() {
     expiryDate.setHours(expiryDate.getHours() + formData.expiryHours);
 
     createPass.mutate({
-      user_id: profile.id,
+      user_id: activeProfile.id,
       visitor_name: formData.visitorName,
       visitor_email: formData.visitorEmail,
       visitor_phone: formData.visitorPhone,
@@ -104,9 +113,11 @@ export default function RequestPassScreen() {
       expiry_time: expiryDate.toISOString(),
       after_scan_qr_expiry: formData.afterScanExpiry,
       resident_details: {
-        fullName: profile.fullName,
-        email: profile.email,
-        phone: profile.phone,
+        fullName: activeProfile.fullName,
+        email: activeProfile.email,
+        phone: activeProfile.phone,
+        societyId: formData.societyId,
+        societyName: formData.societyName,
       },
     }, {
       onSuccess: (newPass) => {
@@ -127,7 +138,7 @@ export default function RequestPassScreen() {
     });
   };
 
-  if (isLoadingProfile) {
+  if (isLoadingProfile || isLoadingGuest) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={theme.colors.secondary} />
@@ -137,15 +148,19 @@ export default function RequestPassScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <StatusBar style="light" />
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1 }}
+    >
+      <View style={styles.container}>
+        <StatusBar style="light" />
 
       {/* Top Header Bar */}
       <ScreenHeader onBack={() => router.back()} />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} bounces={true}>
         {/* Profile Card Section */}
-        {profile && <ProfileCard profile={profile} />}
+        {activeProfile && <ProfileCard profile={activeProfile as any} />}
 
         {/* Tab Selector */}
         <View style={styles.tabBar}>
@@ -169,7 +184,11 @@ export default function RequestPassScreen() {
 
         {/* Tab 1: Request Pass Form */}
         {activeTab === "request" && (
-          <PassRequestForm isPending={createPass.isPending} onSubmit={handleRequestPass} />
+          <PassRequestForm
+            isPending={createPass.isPending}
+            guestProfile={activeProfile}
+            onSubmit={handleRequestPass}
+          />
         )}
 
         {/* Tab 2: History List */}
@@ -185,7 +204,8 @@ export default function RequestPassScreen() {
         onRegister={handleSaveProfile}
         onClose={() => setShowRegModal(false)}
       />
-    </View>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 

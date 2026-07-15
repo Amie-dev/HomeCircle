@@ -53,7 +53,7 @@ export default function GetStartedScreen() {
   };
 
   const handleBecomeMember = () => {
-    Alert.alert("Member Registration", "Registration form is coming soon.");
+    router.push("/create-account" as any);
   };
 
   const handleGeneratePass = () => {
@@ -61,7 +61,7 @@ export default function GetStartedScreen() {
   };
 
   const handleLogin = () => {
-    Alert.alert("Log In", "Login screen will be available soon.");
+    router.push("/login" as any);
   };
 
   return (

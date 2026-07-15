@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -6,12 +6,15 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
 } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+import { MaterialIcons } from "@react-native-vector-icons/material-icons";
 import { theme } from "../../theme";
+import { supabase } from "../../../utils/supabase";
 
 interface PassRequestFormProps {
   isPending: boolean;
+  guestProfile: any | null;
   onSubmit: (data: {
     visitorName: string;
     visitorEmail: string;
@@ -21,32 +24,207 @@ interface PassRequestFormProps {
     flatNo: string;
     expiryHours: number;
     afterScanExpiry: string;
+    societyId?: string;
+    societyName?: string;
   }) => void;
 }
 
 export const PassRequestForm: React.FC<PassRequestFormProps> = ({
   isPending,
+  guestProfile,
   onSubmit,
 }) => {
+  // Visitor info state
   const [visitorName, setVisitorName] = useState("");
   const [visitorEmail, setVisitorEmail] = useState("");
   const [visitorPhone, setVisitorPhone] = useState("");
   const [visitorDesignation, setVisitorDesignation] = useState("Delivery");
-  const [towerNo, setTowerNo] = useState("");
-  const [flatNo, setFlatNo] = useState("");
+
+  // Options state
   const [expiryHours, setExpiryHours] = useState(24);
   const [afterScanExpiry, setAfterScanExpiry] = useState("Instant");
 
+  // Destination Verification state
+  const [societyQuery, setSocietyQuery] = useState("");
+  const [validatingSociety, setValidatingSociety] = useState(false);
+  const [societyData, setSocietyData] = useState<any | null>(null);
+  const [societyError, setSocietyError] = useState<string | null>(null);
+
+  const [towerQuery, setTowerQuery] = useState("");
+  const [validatingTower, setValidatingTower] = useState(false);
+  const [towerData, setTowerData] = useState<any | null>(null);
+  const [towerError, setTowerError] = useState<string | null>(null);
+
+  const [flatQuery, setFlatQuery] = useState("");
+  const [validatingFlat, setValidatingFlat] = useState(false);
+  const [flatData, setFlatData] = useState<any | null>(null);
+  const [flatError, setFlatError] = useState<string | null>(null);
+
+  // 1. Default visitor fields if guest session exists
+  useEffect(() => {
+    if (guestProfile) {
+      setVisitorName(guestProfile.fullName || "");
+      setVisitorEmail(guestProfile.email || "");
+      setVisitorPhone(guestProfile.phone || "");
+
+      // If registered resident profile, also pre-fill destination details!
+      if (guestProfile.societyName) {
+        setSocietyQuery(guestProfile.societyName);
+      }
+      if (guestProfile.towerName) {
+        setTowerQuery(guestProfile.towerName);
+      }
+      if (guestProfile.flatName) {
+        setFlatQuery(guestProfile.flatName);
+      }
+    }
+  }, [guestProfile]);
+
+  // 2. Debounced Society Check
+  useEffect(() => {
+    if (societyQuery.trim().length < 3) {
+      setSocietyData(null);
+      setSocietyError(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setValidatingSociety(true);
+      setSocietyError(null);
+      try {
+        const query = societyQuery.trim();
+        const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(query);
+
+        let selectQuery = supabase.from("societies").select("*");
+        if (isUuid) {
+          selectQuery = selectQuery.eq("id", query);
+        } else {
+          selectQuery = selectQuery.or(`society_id.eq.${query.toLowerCase()},name.ilike.%${query}%`);
+        }
+
+        const { data, error } = await selectQuery.maybeSingle();
+
+        if (error) throw error;
+
+        if (data) {
+          setSocietyData(data);
+          setSocietyError(null);
+        } else {
+          setSocietyData(null);
+          setSocietyError("Invalid society name or unique ID code.");
+        }
+      } catch (err: any) {
+        console.warn("Society lookup failed:", err.message);
+        setSocietyError("Database lookup warning.");
+      } finally {
+        setValidatingSociety(false);
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [societyQuery]);
+
+  // 3. Debounced Tower Check
+  useEffect(() => {
+    if (!societyData || towerQuery.trim().length === 0) {
+      setTowerData(null);
+      setTowerError(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setValidatingTower(true);
+      setTowerError(null);
+      try {
+        const { data, error } = await supabase
+          .from("towers")
+          .select("*")
+          .eq("society_id", societyData.id)
+          .ilike("name", towerQuery.trim())
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (data) {
+          setTowerData(data);
+          setTowerError(null);
+        } else {
+          setTowerData(null);
+          setTowerError("Tower/Block not found in this society.");
+        }
+      } catch (err: any) {
+        console.warn("Tower lookup failed:", err.message);
+        setTowerError("Database lookup warning.");
+      } finally {
+        setValidatingTower(false);
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [towerQuery, societyData]);
+
+  // 4. Debounced Flat Check
+  useEffect(() => {
+    if (!towerData || flatQuery.trim().length === 0) {
+      setFlatData(null);
+      setFlatError(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setValidatingFlat(true);
+      setFlatError(null);
+      try {
+        const { data, error } = await supabase
+          .from("flats")
+          .select("*")
+          .eq("tower_id", towerData.id)
+          .eq("flat_number", flatQuery.trim())
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (data) {
+          setFlatData(data);
+          setFlatError(null);
+        } else {
+          setFlatData(null);
+          setFlatError("Flat number not found in this tower.");
+        }
+      } catch (err: any) {
+        console.warn("Flat lookup failed:", err.message);
+        setFlatError("Database lookup warning.");
+      } finally {
+        setValidatingFlat(false);
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [flatQuery, towerData]);
+
   const handleSubmit = () => {
+    if (!visitorName || !visitorEmail || !visitorPhone) {
+      Alert.alert("Missing Fields", "Please complete all visitor profile fields.");
+      return;
+    }
+
+    // Require destination mapping
+    if (!societyQuery || !towerQuery || !flatQuery) {
+      Alert.alert("Destination Error", "Please provide society, tower, and flat destinations.");
+      return;
+    }
+
     onSubmit({
       visitorName,
       visitorEmail,
       visitorPhone,
       visitorDesignation,
-      towerNo,
-      flatNo,
+      towerNo: towerQuery,
+      flatNo: flatQuery,
       expiryHours,
       afterScanExpiry,
+      societyId: societyData?.id || undefined,
+      societyName: societyData?.name || societyQuery,
     });
   };
 
@@ -93,9 +271,9 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
         </View>
       </View>
 
-      {/* Designation Chips */}
+      {/* Designation chips */}
       <View style={styles.formSection}>
-        <Text style={styles.sectionLabel}>DESIGNATION</Text>
+        <Text style={styles.sectionLabel}>PURPOSE / DESIGNATION</Text>
         <View style={styles.chipsRow}>
           {["Delivery", "Service", "Guest", "Friend", "Family"].map((item) => {
             const isSelected = visitorDesignation === item;
@@ -116,7 +294,7 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
 
       {/* Expiry Hours Selection */}
       <View style={styles.formSection}>
-        <Text style={styles.sectionLabel}>PASS VALIDITY (EXPIRY)</Text>
+        <Text style={styles.sectionLabel}>PASS VALIDITY (HOURS)</Text>
         <View style={styles.chipsRow}>
           {[2, 4, 8, 12, 24, 48].map((hours) => {
             const isSelected = expiryHours === hours;
@@ -156,40 +334,88 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
         </View>
       </View>
 
-      {/* Destination */}
+      {/* Destination Selection */}
       <View style={styles.formSection}>
-        <Text style={styles.sectionLabel}>DESTINATION</Text>
+        <Text style={styles.sectionLabel}>DESTINATION SOCIETY</Text>
         
-        <View style={[styles.inputContainer, styles.inputContainerDisabled]}>
+        {/* Society Search Input */}
+        <View
+          style={[
+            styles.inputContainer,
+            societyError ? styles.inputBoxError : societyData ? styles.inputBoxSuccess : null,
+          ]}
+        >
           <MaterialIcons name="domain" size={20} color={theme.colors.outline} style={styles.inputIcon} />
           <TextInput
-            style={[styles.textInput, styles.textInputDisabled]}
-            value="Greenwood Heights (GH001)"
-            editable={false}
+            style={styles.textInput}
+            placeholder="Search Society Name or ID"
+            placeholderTextColor={theme.colors.outline}
+            value={societyQuery}
+            onChangeText={setSocietyQuery}
           />
+          {validatingSociety && <ActivityIndicator size="small" color={theme.colors.secondary} />}
+          {!validatingSociety && societyData && (
+            <MaterialIcons name="check-circle" size={20} color="#2e7d32" />
+          )}
         </View>
+        {societyError && <Text style={styles.errorText}>{societyError}</Text>}
+        {!societyError && societyData && (
+          <Text style={styles.successText}>
+            ✓ Verified: {societyData.name} ({societyData.society_id ? societyData.society_id.toUpperCase() : "No Code"})
+          </Text>
+        )}
 
         <View style={styles.gridRow}>
-          <View style={[styles.inputContainer, { flex: 1, marginBottom: 0 }]}>
-            <MaterialIcons name="apartment" size={20} color={theme.colors.outline} style={styles.inputIcon} />
-            <TextInput
-              style={styles.textInput}
-              placeholder="Tower No."
-              placeholderTextColor={theme.colors.outline}
-              value={towerNo}
-              onChangeText={setTowerNo}
-            />
+          {/* Tower/Block input */}
+          <View style={{ flex: 1 }}>
+            <View
+              style={[
+                styles.inputContainer,
+                { marginBottom: 0 },
+                towerError ? styles.inputBoxError : towerData ? styles.inputBoxSuccess : null,
+              ]}
+            >
+              <MaterialIcons name="apartment" size={20} color={theme.colors.outline} style={styles.inputIcon} />
+              <TextInput
+                style={styles.textInput}
+                placeholder="Tower No."
+                placeholderTextColor={theme.colors.outline}
+                value={towerQuery}
+                onChangeText={setTowerQuery}
+                editable={!!societyData}
+              />
+              {validatingTower && <ActivityIndicator size="small" color={theme.colors.secondary} />}
+              {!validatingTower && towerData && (
+                <MaterialIcons name="check-circle" size={16} color="#2e7d32" />
+              )}
+            </View>
+            {towerError && <Text style={[styles.errorText, { marginTop: 4 }]}>{towerError}</Text>}
           </View>
 
-          <View style={[styles.inputContainer, { flex: 1, marginBottom: 0 }]}>
-            <MaterialIcons name="meeting-room" size={20} color={theme.colors.outline} style={styles.inputIcon} />
-            <TextInput
-              style={styles.textInput}
-              placeholder="Flat No."
-              placeholderTextColor={theme.colors.outline}
-              value={flatNo}
-              onChangeText={setFlatNo}
-            />
+          {/* Flat input */}
+          <View style={{ flex: 1 }}>
+            <View
+              style={[
+                styles.inputContainer,
+                { marginBottom: 0 },
+                flatError ? styles.inputBoxError : flatData ? styles.inputBoxSuccess : null,
+              ]}
+            >
+              <MaterialIcons name="meeting-room" size={20} color={theme.colors.outline} style={styles.inputIcon} />
+              <TextInput
+                style={styles.textInput}
+                placeholder="Flat No."
+                placeholderTextColor={theme.colors.outline}
+                value={flatQuery}
+                onChangeText={setFlatQuery}
+                editable={!!towerData}
+              />
+              {validatingFlat && <ActivityIndicator size="small" color={theme.colors.secondary} />}
+              {!validatingFlat && flatData && (
+                <MaterialIcons name="check-circle" size={16} color="#2e7d32" />
+              )}
+            </View>
+            {flatError && <Text style={[styles.errorText, { marginTop: 4 }]}>{flatError}</Text>}
           </View>
         </View>
       </View>
@@ -243,8 +469,23 @@ const styles = StyleSheet.create({
     height: 52,
     marginBottom: theme.spacing.xs,
   },
-  inputContainerDisabled: {
-    backgroundColor: theme.colors.surfaceContainerLow,
+  inputBoxSuccess: {
+    borderColor: "#2e7d32",
+  },
+  inputBoxError: {
+    borderColor: theme.colors.error,
+  },
+  errorText: {
+    ...theme.typography.labelMd,
+    color: theme.colors.error,
+    paddingHorizontal: 4,
+    marginTop: -4,
+  },
+  successText: {
+    ...theme.typography.labelMd,
+    color: "#2e7d32",
+    paddingHorizontal: 4,
+    marginTop: -4,
   },
   inputIcon: {
     marginRight: theme.spacing.sm,
@@ -254,9 +495,6 @@ const styles = StyleSheet.create({
     ...theme.typography.bodyMd,
     color: theme.colors.onSurface,
     height: "100%",
-  },
-  textInputDisabled: {
-    color: theme.colors.onSurfaceVariant,
   },
   chipsRow: {
     flexDirection: "row",

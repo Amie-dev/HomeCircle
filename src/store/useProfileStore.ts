@@ -8,19 +8,28 @@ export interface ResidentProfile {
   phone: string;
   vehicleNumber?: string;
   token?: string;
+  role?: 'Resident' | 'Guard' | 'Admin';
+  isVerified?: boolean;
+  societyId?: string;
+  societyName?: string;
+  towerName?: string;
+  flatName?: string;
 }
 
 interface ProfileState {
   profile: ResidentProfile | null;
   isLoadingProfile: boolean;
+  signupData: any | null;
   setProfile: (profile: ResidentProfile | null) => Promise<void>;
   loadProfile: () => Promise<void>;
   clearProfile: () => Promise<void>;
+  setSignupData: (data: any | null) => void;
 }
 
 export const useProfileStore = create<ProfileState>((set) => ({
   profile: null,
   isLoadingProfile: true,
+  signupData: null,
   setProfile: async (profile) => {
     try {
       if (profile) {
@@ -49,9 +58,10 @@ export const useProfileStore = create<ProfileState>((set) => ({
   clearProfile: async () => {
     try {
       await AsyncStorage.removeItem('user_profile');
-      set({ profile: null });
+      set({ profile: null, signupData: null });
     } catch (e) {
       console.error('Error clearing profile from AsyncStorage:', e);
     }
   },
+  setSignupData: (data) => set({ signupData: data }),
 }));

@@ -8,8 +8,9 @@ import {
   Modal,
   ActivityIndicator,
   Platform,
+  KeyboardAvoidingView,
 } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+import { MaterialIcons } from "@react-native-vector-icons/material-icons";
 import { theme } from "../../theme";
 
 interface ProfileRegModalProps {
@@ -46,10 +47,14 @@ export const ProfileRegModal: React.FC<ProfileRegModalProps> = ({
       animationType="slide"
       statusBarTranslucent={true}
     >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Guest Registration</Text>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Guest Registration</Text>
             <Text style={styles.modalSubtitle}>
               Create your HomeCircle Guest profile to generate visitor passes and receive security notifications.
             </Text>
@@ -128,7 +133,8 @@ export const ProfileRegModal: React.FC<ProfileRegModalProps> = ({
           </TouchableOpacity>
         </View>
       </View>
-    </Modal>
+    </KeyboardAvoidingView>
+  </Modal>
   );
 };
 

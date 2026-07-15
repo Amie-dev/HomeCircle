@@ -16,9 +16,29 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '../theme';
 import { FadeInView } from '../components/welcome/FadeInView';
+import { useProfileStore } from '../store/useProfileStore';
 
 export default function WelcomeScreen() {
   const router = useRouter();
+  const { profile, loadProfile, isLoadingProfile } = useProfileStore();
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  useEffect(() => {
+    if (!isLoadingProfile && profile) {
+      if (profile.role === "Resident") {
+        router.replace("/(resident)" as any);
+      } else if (profile.role === "Guard") {
+        router.replace("/(guard)" as any);
+      } else if (profile.role === "Admin") {
+        router.replace("/(admin)" as any);
+      } else {
+        router.replace("/request-pass" as any);
+      }
+    }
+  }, [profile, isLoadingProfile]);
 
   // Animation for Get Started button hover/press scale
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -42,7 +62,7 @@ export default function WelcomeScreen() {
   };
 
   const handleLogin = () => {
-    Alert.alert('Log In', 'Login screen will be available soon.');
+    router.push('/login' as any);
   };
 
   return (

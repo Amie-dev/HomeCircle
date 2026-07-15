@@ -1,15 +1,34 @@
 import React from "react";
-import { StyleSheet, Text, View, Platform } from "react-native";
+import { StyleSheet, Text, View, Platform, TouchableOpacity, Alert } from "react-native";
 import { Image } from "expo-image";
-import { MaterialIcons } from "@expo/vector-icons";
+import { MaterialIcons } from "@react-native-vector-icons/material-icons";
+import { useRouter } from "expo-router";
 import { theme } from "../../theme";
-import { ResidentProfile } from "../../store/useProfileStore";
+import { ResidentProfile, useProfileStore } from "../../store/useProfileStore";
+import { useGuestProfileStore } from "../../store/useGuestProfileStore";
 
 interface ProfileCardProps {
   profile: ResidentProfile;
 }
 
 export const ProfileCard: React.FC<ProfileCardProps> = ({ profile }) => {
+  const router = useRouter();
+
+  const handleLogout = () => {
+    Alert.alert("Sign Out", "Are you sure you want to log out of your session?", [
+      {
+        text: "Log Out",
+        style: "destructive",
+        onPress: async () => {
+          await useProfileStore.getState().clearProfile();
+          await useGuestProfileStore.getState().clearGuestProfile();
+          router.replace("/get-started" as any);
+        },
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
   return (
     <View style={styles.profileCard}>
       <View style={styles.avatarLarge}>
@@ -33,6 +52,9 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({ profile }) => {
           <Text style={styles.profileInfoText}>{profile.phone}</Text>
         </View>
       </View>
+      <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+        <MaterialIcons name="logout" size={20} color={theme.colors.error} />
+      </TouchableOpacity>
     </View>
   );
 };
@@ -95,5 +117,13 @@ const styles = StyleSheet.create({
   profileInfoText: {
     ...theme.typography.bodyMd,
     color: theme.colors.onSurfaceVariant,
+  },
+  logoutBtn: {
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
