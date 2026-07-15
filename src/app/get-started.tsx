@@ -1,0 +1,297 @@
+import { MaterialIcons } from "@react-native-vector-icons/material-icons";
+import { Image } from "expo-image";
+import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import React, { useRef } from "react";
+import {
+  Alert,
+  Animated,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { theme } from "../theme";
+import { ChoiceCard } from "../components/get-started/ChoiceCard";
+
+export default function GetStartedScreen() {
+  const router = useRouter();
+  const headerOpacity = useRef(new Animated.Value(0)).current;
+  const heroOpacity = useRef(new Animated.Value(0)).current;
+  const heroSlide = useRef(new Animated.Value(15)).current;
+
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(headerOpacity, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(heroOpacity, {
+        toValue: 1,
+        duration: 500,
+        delay: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(heroSlide, {
+        toValue: 0,
+        duration: 500,
+        delay: 150,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [headerOpacity, heroOpacity, heroSlide]);
+
+  const handleHelp = () => {
+    Alert.alert(
+      "Help & Support",
+      "Our resident support channel is online at support@homecircle.com.",
+    );
+  };
+
+  const handleBecomeMember = () => {
+    Alert.alert("Member Registration", "Registration form is coming soon.");
+  };
+
+  const handleGeneratePass = () => {
+    router.push("/request-pass" as any);
+  };
+
+  const handleLogin = () => {
+    Alert.alert("Log In", "Login screen will be available soon.");
+  };
+
+  return (
+    <View style={styles.container}>
+      <StatusBar style="light" />
+
+      {/* Top Header Bar (Sticky) */}
+      <SafeAreaView edges={["top"]} style={styles.safeHeader}>
+        <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
+          <Text style={styles.headerLogo}>HomeCircle</Text>
+          <Pressable
+            onPress={handleHelp}
+            style={({ pressed }) => [
+              styles.helpButton,
+              pressed && styles.helpButtonPressed,
+            ]}
+          >
+            <MaterialIcons
+              name="help-outline"
+              size={22}
+              color={theme.colors.onSurfaceVariant}
+            />
+          </Pressable>
+        </Animated.View>
+      </SafeAreaView>
+
+      {/* Scrollable Bento Grid Content */}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces={true}
+      >
+        {/* Hero Section */}
+        <Animated.View
+          style={[
+            styles.heroSection,
+            { opacity: heroOpacity, transform: [{ translateY: heroSlide }] },
+          ]}
+        >
+          <View style={styles.heroIconWrapper}>
+            <Image
+              source={require("../../assets/images/icon.png")}
+              style={styles.heroFavicon}
+              contentFit="contain"
+            />
+          </View>
+          <Text style={styles.heroTitle}>How can we help you today?</Text>
+          <Text style={styles.heroSubtitle}>
+            Choose an option below to get started with your society management
+            portal.
+          </Text>
+        </Animated.View>
+
+        {/* Grid/Bento Layout */}
+        <View style={styles.grid}>
+          <ChoiceCard
+            iconName="home"
+            largeIconName="house"
+            title="Become a Member"
+            description="Register as a resident to manage your home and community."
+            actionText="Start registration"
+            onPress={handleBecomeMember}
+            delay={300}
+          />
+
+          <ChoiceCard
+            iconName="qr-code-2"
+            largeIconName="vibration"
+            title="Generate Visitor Pass"
+            description="Quickly request an entry pass for society access."
+            actionText="Create pass"
+            onPress={handleGeneratePass}
+            delay={450}
+          />
+        </View>
+
+        {/* Context Info Footer */}
+        <View style={styles.footerSection}>
+          <View style={styles.securityBadge}>
+            <MaterialIcons
+              name="verified-user"
+              size={18}
+              color={theme.colors.secondary}
+            />
+            <Text style={styles.securityText}>Encrypted & Secure Access</Text>
+          </View>
+
+          <Pressable onPress={handleLogin} style={styles.loginButton}>
+            <Text style={styles.loginText}>
+              Already have an account? Log in
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Footer legal text */}
+        <View style={styles.legalFooter}>
+          <Text style={styles.legalText}>
+            © 2026 HomeCircle Smart Society Solutions. All rights reserved.
+          </Text>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  safeHeader: {
+    backgroundColor: "rgba(247, 249, 251, 0.8)",
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.surfaceContainer,
+    zIndex: 10,
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+
+    paddingHorizontal: theme.spacing.containerMarginMobile,
+    paddingVertical: theme.spacing.md,
+  },
+  headerLogo: {
+    ...theme.typography.headlineLgMobile,
+    color: theme.colors.secondary,
+    fontWeight: "700",
+  },
+  helpButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.surfaceContainerHigh,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  helpButtonPressed: {
+    backgroundColor: theme.colors.surfaceContainerHighest,
+    opacity: 0.9,
+  },
+  scrollContent: {
+    paddingHorizontal: theme.spacing.containerMarginMobile,
+    paddingTop: theme.spacing.xl,
+    paddingBottom: theme.spacing.lg,
+    alignItems: "center",
+  },
+  heroSection: {
+    alignItems: "center",
+    marginBottom: theme.spacing.xl,
+    maxWidth: 450,
+  },
+  heroIconWrapper: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    backgroundColor: theme.colors.secondaryContainer,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: theme.spacing.md,
+    ...Platform.select({
+      ios: {
+        shadowColor: theme.colors.secondary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  heroFavicon: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+  },
+  heroTitle: {
+    ...theme.typography.headlineXl,
+    color: theme.colors.primary,
+    textAlign: "center",
+    marginBottom: theme.spacing.sm,
+  },
+  heroSubtitle: {
+    ...theme.typography.bodyLg,
+    color: theme.colors.onSurfaceVariant,
+    textAlign: "center",
+    lineHeight: 24,
+  },
+  grid: {
+    width: "100%",
+    maxWidth: 600,
+    gap: theme.spacing.md,
+    marginBottom: theme.spacing.xl,
+  },
+  footerSection: {
+    alignItems: "center",
+    gap: theme.spacing.md,
+    marginTop: theme.spacing.sm,
+    marginBottom: theme.spacing.xl,
+  },
+  securityBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+    backgroundColor: theme.colors.surfaceContainer,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.rounded.full,
+  },
+  securityText: {
+    ...theme.typography.labelMd,
+    color: theme.colors.onSurfaceVariant,
+  },
+  loginButton: {
+    paddingVertical: theme.spacing.xs,
+  },
+  loginText: {
+    ...theme.typography.button,
+    color: theme.colors.onSurfaceVariant,
+    textDecorationLine: "underline",
+  },
+  legalFooter: {
+    paddingVertical: theme.spacing.md,
+    alignItems: "center",
+    width: "100%",
+  },
+  legalText: {
+    ...theme.typography.labelMd,
+    color: theme.colors.outline,
+    textAlign: "center",
+  },
+});
