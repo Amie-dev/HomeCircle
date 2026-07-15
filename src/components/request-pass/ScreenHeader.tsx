@@ -21,11 +21,11 @@ export const ScreenHeader: React.FC<ScreenHeaderProps> = ({ onBack }) => {
   const handleAvatarPress = () => {
     if (profile) {
       if (profile.role === "Resident") {
-        router.push("/(resident)" as any);
+        router.push("/resident" as any);
       } else if (profile.role === "Guard") {
-        router.push("/(guard)" as any);
+        router.push("/guard" as any);
       } else if (profile.role === "Admin") {
-        router.push("/(admin)" as any);
+        router.push("/admin" as any);
       }
     } else if (guestProfile) {
       Alert.alert(
@@ -37,7 +37,7 @@ export const ScreenHeader: React.FC<ScreenHeaderProps> = ({ onBack }) => {
         ]
       );
     } else {
-      router.push("/login" as any);
+      router.push("/get-started" as any);
     }
   };
 

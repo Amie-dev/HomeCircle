@@ -17,6 +17,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../theme";
 import { supabase } from "../../../utils/supabase";
 import { useProfileStore } from "../../store/useProfileStore";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -50,9 +51,9 @@ export default function LoginScreen() {
 
       const userId = authData.user.id;
 
-      // 2. Fetch profile from guestusers table
+      // 2. Fetch profile from users table
       const { data: profileData, error: profileError } = await supabase
-        .from("guestusers")
+        .from("users")
         .select("*")
         .eq("email", email.trim())
         .maybeSingle();
@@ -101,13 +102,17 @@ export default function LoginScreen() {
         }
       }
 
+      // Fallback role to what was set in users table if verification request hasn't been submitted yet
+      if (!role && profileData) {
+        role = (profileData.role as any) || undefined;
+      }
+
       // 4. Save profile in Zustand
       await setProfile({
         id: userId,
         fullName: profileData?.full_name || authData.user.user_metadata?.full_name || "User",
         email: email.trim(),
         phone: profileData?.phone || "N/A",
-        vehicleNumber: profileData?.vehicle_number || undefined,
         role,
         isVerified,
         societyId,
@@ -116,33 +121,32 @@ export default function LoginScreen() {
         flatName,
       });
 
-      // 5. Navigate based on role & verification
+      // 5. Navigate based on role
       if (role === "Admin") {
         Alert.alert("Welcome Admin", "Logging into society administration dashboard.", [
-          { text: "OK", onPress: () => router.replace("/(admin)" as any) },
+          { text: "OK", onPress: () => router.replace("/admin" as any) },
         ]);
       } else if (role === "Resident") {
         if (!isVerified) {
           Alert.alert(
             "Verification Pending",
             `Your profile is awaiting approval from ${societyName || "your society"} Admin.`,
-            [{ text: "Continue", onPress: () => router.replace("/(resident)" as any) }]
+            [{ text: "Continue", onPress: () => router.replace("/resident" as any) }]
           );
         } else {
-          router.replace("/(resident)" as any);
+          router.replace("/resident" as any);
         }
       } else if (role === "Guard") {
         if (!isVerified) {
           Alert.alert(
             "Verification Pending",
             `Your profile is awaiting approval from ${societyName || "your society"} Admin.`,
-            [{ text: "Continue", onPress: () => router.replace("/(guard)" as any) }]
+            [{ text: "Continue", onPress: () => router.replace("/guard" as any) }]
           );
         } else {
-          router.replace("/(guard)" as any);
+          router.replace("/guard" as any);
         }
       } else {
-        // Fallback or Guest
         router.replace("/request-pass" as any);
       }
     } catch (err: any) {
@@ -168,7 +172,7 @@ export default function LoginScreen() {
                   towerName: "Tower A",
                   flatName: "101",
                 });
-                router.replace("/(resident)" as any);
+                router.replace("/resident" as any);
               },
             },
             { text: "Cancel", style: "cancel" },
@@ -183,6 +187,7 @@ export default function LoginScreen() {
   };
 
   return (
+     <SafeAreaView edges={["top","bottom","left",'right']} style={{flex:1}}>
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={{ flex: 1 }}
@@ -298,7 +303,7 @@ export default function LoginScreen() {
         <Text style={styles.encryptedText}>END-TO-END ENCRYPTED</Text>
       </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardAvoidingView></SafeAreaView>
   );
 }
 

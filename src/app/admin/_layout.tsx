@@ -4,7 +4,7 @@ import { View, ActivityIndicator } from "react-native";
 import { useProfileStore } from "../../store/useProfileStore";
 import { theme } from "../../theme";
 
-export default function ResidentLayout() {
+export default function AdminLayout() {
   const { profile, isLoadingProfile } = useProfileStore();
 
   if (isLoadingProfile) {
@@ -21,9 +21,9 @@ export default function ResidentLayout() {
   }
 
   // Role verification guard
-  if (profile.role !== "Resident") {
-    if (profile.role === "Admin") return <Redirect href="/(admin)" />;
-    if (profile.role === "Guard") return <Redirect href="/(guard)" />;
+  if (profile.role !== "Admin") {
+    if (profile.role === "Resident") return <Redirect href="/resident" />;
+    if (profile.role === "Guard") return <Redirect href="/guard" />;
     return <Redirect href="/request-pass" />;
   }
 

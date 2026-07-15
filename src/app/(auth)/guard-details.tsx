@@ -144,7 +144,7 @@ export default function GuardDetailsScreen() {
       Alert.alert(
         "Guard Profile Registered",
         `Details submitted for ${societyData.name} Admin approval. Gate access remains pending until verified.`,
-        [{ text: "Done", onPress: () => router.replace("/request-pass" as any) }]
+        [{ text: "Done", onPress: () => router.replace("/(guard)" as any) }]
       );
     } catch (err: any) {
       Alert.alert("Error registering", err.message || "Failed to complete details.");
@@ -157,6 +157,19 @@ export default function GuardDetailsScreen() {
     setLoading(true);
     try {
       if (signupData) {
+        // Hydrate as Guard profile (unverified/no society yet)
+        await setProfile({
+          id: signupData.id,
+          fullName: signupData.fullName,
+          email: signupData.email,
+          phone: signupData.phone,
+          role: "Guard",
+          isVerified: false,
+          societyId: "",
+          societyName: "",
+        });
+
+        // Register in guestusers table
         await supabase
           .from("guestusers")
           .insert({
@@ -167,19 +180,10 @@ export default function GuardDetailsScreen() {
             vehicle_number: null,
             notification_token: null,
           });
-
-        await useGuestProfileStore.getState().setGuestProfile({
-          id: signupData.id,
-          fullName: signupData.fullName,
-          email: signupData.email,
-          phone: signupData.phone,
-        });
-
-        await useProfileStore.getState().clearProfile();
       }
-      router.replace("/request-pass" as any);
+      router.replace("/guard" as any);
     } catch (e) {
-      router.replace("/request-pass" as any);
+      router.replace("/guard" as any);
     } finally {
       setLoading(false);
     }
@@ -204,7 +208,7 @@ export default function GuardDetailsScreen() {
       Alert.alert(
         "Verification Submitted (Mock)",
         `Successfully submitted guard verification request for ${mockSocName}.`,
-        [{ text: "Done", onPress: () => router.replace("/request-pass" as any) }]
+        [{ text: "Done", onPress: () => router.replace("/(guard)" as any) }]
       );
     } catch (e: any) {
       Alert.alert("Error", e.message);

@@ -29,11 +29,11 @@ export default function WelcomeScreen() {
   useEffect(() => {
     if (!isLoadingProfile && profile) {
       if (profile.role === "Resident") {
-        router.replace("/(resident)" as any);
+        router.replace("/resident" as any);
       } else if (profile.role === "Guard") {
-        router.replace("/(guard)" as any);
+        router.replace("/guard" as any);
       } else if (profile.role === "Admin") {
-        router.replace("/(admin)" as any);
+        router.replace("/admin" as any);
       } else {
         router.replace("/request-pass" as any);
       }

@@ -166,7 +166,7 @@ export default function SocietySetupScreen() {
       Alert.alert(
         "Society Registered!",
         `Society "${societyName}" and its digital concierge are set up successfully.`,
-        [{ text: "OK", onPress: () => router.replace("/request-pass" as any) }]
+        [{ text: "OK", onPress: () => router.replace("/(admin)" as any) }]
       );
     } catch (err: any) {
       const message = err.message || "Failed to complete society registration";
@@ -194,6 +194,19 @@ export default function SocietySetupScreen() {
     setLoading(true);
     try {
       if (signupData) {
+        // Hydrate as Admin profile (unverified/no society yet)
+        await setProfile({
+          id: signupData.id,
+          fullName: signupData.fullName,
+          email: signupData.email,
+          phone: signupData.phone,
+          role: "Admin",
+          isVerified: false,
+          societyId: "",
+          societyName: "",
+        });
+
+        // Register in guestusers table
         await supabase
           .from("guestusers")
           .insert({
@@ -204,19 +217,10 @@ export default function SocietySetupScreen() {
             vehicle_number: null,
             notification_token: null,
           });
-
-        await useGuestProfileStore.getState().setGuestProfile({
-          id: signupData.id,
-          fullName: signupData.fullName,
-          email: signupData.email,
-          phone: signupData.phone,
-        });
-
-        await useProfileStore.getState().clearProfile();
       }
-      router.replace("/request-pass" as any);
+      router.replace("/admin" as any);
     } catch (e) {
-      router.replace("/request-pass" as any);
+      router.replace("/admin" as any);
     } finally {
       setLoading(false);
     }
@@ -239,7 +243,7 @@ export default function SocietySetupScreen() {
       Alert.alert(
         "Setup Finished (Mock)",
         `Offline mock setup complete for society: "${societyName}" with ${nTowers} Towers and ${nFlats} Flats.`,
-        [{ text: "OK", onPress: () => router.replace("/request-pass" as any) }]
+        [{ text: "OK", onPress: () => router.replace("/(admin)" as any) }]
       );
     } catch (e: any) {
       Alert.alert("Error", e.message);

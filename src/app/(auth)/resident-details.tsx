@@ -245,7 +245,7 @@ export default function ResidentDetailsScreen() {
       Alert.alert(
         "Verification Submitted",
         `Details sent to ${societyData.name} Admin for verification. Once approved, you will get access.`,
-        [{ text: "Done", onPress: () => router.replace("/request-pass" as any) }]
+        [{ text: "Done", onPress: () => router.replace("/(resident)" as any) }]
       );
     } catch (err: any) {
       Alert.alert("Error registering", err.message || "Failed to complete details.");
@@ -258,6 +258,19 @@ export default function ResidentDetailsScreen() {
     setLoading(true);
     try {
       if (signupData) {
+        // Hydrate as Resident profile (unverified/no society yet)
+        await setProfile({
+          id: signupData.id,
+          fullName: signupData.fullName,
+          email: signupData.email,
+          phone: signupData.phone,
+          role: "Resident",
+          isVerified: false,
+          societyId: "",
+          societyName: "",
+        });
+
+        // Register in guestusers table
         await supabase
           .from("guestusers")
           .insert({
@@ -268,19 +281,10 @@ export default function ResidentDetailsScreen() {
             vehicle_number: null,
             notification_token: null,
           });
-
-        await useGuestProfileStore.getState().setGuestProfile({
-          id: signupData.id,
-          fullName: signupData.fullName,
-          email: signupData.email,
-          phone: signupData.phone,
-        });
-
-        await useProfileStore.getState().clearProfile();
       }
-      router.replace("/request-pass" as any);
+      router.replace("/resident" as any);
     } catch (e) {
-      router.replace("/request-pass" as any);
+      router.replace("/resident" as any);
     } finally {
       setLoading(false);
     }
@@ -309,7 +313,7 @@ export default function ResidentDetailsScreen() {
       Alert.alert(
         "Verification Submitted (Mock)",
         `Successfully submitted verification request for ${mockSocName}, ${mockTower}, Flat ${mockFlat}.`,
-        [{ text: "Done", onPress: () => router.replace("/request-pass" as any) }]
+        [{ text: "Done", onPress: () => router.replace("/(resident)" as any) }]
       );
     } catch (e: any) {
       Alert.alert("Error", e.message);
