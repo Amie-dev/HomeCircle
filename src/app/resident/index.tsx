@@ -18,4 +18,5 @@ export default function Index() {
       return <Redirect href="/request-pass" />;
     }
 
-  return <Redirect href="/(tabs)" />;
+  return <Redirect href="/resident/(tabs)" />;
+}

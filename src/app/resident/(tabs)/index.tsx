@@ -33,20 +33,15 @@ export default function ResidentDashboard() {
   };
 
   const handleRaiseComplaint = () => {
-    router.push("/resident/community" as any);
+    router.push("/resident/(home)/complaint" as any);
   };
 
   const handleBookAmenity = () => {
-    Alert.alert("Book Amenity", "Select an amenity to book:", [
-      { text: "Clubhouse", onPress: () => Alert.alert("Success", "Clubhouse booking request sent.") },
-      { text: "Tennis Court", onPress: () => Alert.alert("Success", "Tennis Court booking request sent.") },
-      { text: "Swimming Pool", onPress: () => Alert.alert("Success", "Swimming Pool booking request sent.") },
-      { text: "Cancel", style: "cancel" },
-    ]);
+    router.push("/resident/(home)/amenities" as any);
   };
 
   const handlePayDues = () => {
-    Alert.alert("Pay Dues", "All dues paid. Balance is ₹0.00. Thank you!");
+    router.push("/resident/(home)/dues" as any);
   };
 
   const getStatusColor = (status: string) => {
@@ -173,7 +168,7 @@ export default function ResidentDashboard() {
                 <MaterialIcons name="account-balance-wallet" size={20} color={theme.colors.error} />
               </View>
               <Text style={styles.halfCardLabel}>Dues</Text>
-              <Text style={styles.halfCardValue}>₹0.00</Text>
+              <Text style={styles.halfCardValue}>₹4,500.00</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -184,7 +179,7 @@ export default function ResidentDashboard() {
         </View>
         <View style={styles.actionsGrid}>
           {/* Action 1 */}
-          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push("/request-pass" as any)}>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push("/resident/(home)/pre-approve" as any)}>
             <View style={styles.actionIconOuter}>
               <MaterialIcons name="person-add" size={24} color={theme.colors.primary} />
             </View>
@@ -273,7 +268,7 @@ export default function ResidentDashboard() {
       {/* FAB to Pre-approve Guest */}
       <TouchableOpacity 
         style={styles.fab} 
-        onPress={() => router.push("/request-pass" as any)}
+        onPress={() => router.push("/resident/(home)/pre-approve" as any)}
       >
         <MaterialIcons name="add" size={28} color="#ffffff" />
       </TouchableOpacity>
