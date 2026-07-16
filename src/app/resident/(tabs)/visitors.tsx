@@ -1,0 +1,699 @@
+import React, { useState } from "react";
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image, ImageBackground } from "react-native";
+import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { theme } from "../../../theme";
+import { useProfileStore } from "../../../store/useProfileStore";
+import { usePassesHistory } from "../../../hooks/useRequestPasses";
+import { supabase } from "../../../../utils/supabase";
+
+export default function VisitorsScreen() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { profile } = useProfileStore();
+  const [activeTab, setActiveTab] = useState<"approvals" | "history">("approvals");
+
+  // Fetch visitor history/live data
+  const { data: historyList = [], isLoading } = usePassesHistory(profile?.id);
+
+  // Mutation to approve/reject passes
+  const updatePassStatusMutation = useMutation({
+    mutationFn: async ({ passId, status }: { passId: string; status: "Approved" | "Rejected" }) => {
+      const { error } = await supabase
+        .from("requestpasses")
+        .update({ status })
+        .eq("id", passId);
+      
+      if (error) throw error;
+    },
+    onSuccess: (_, variables) => {
+      Alert.alert("Success", `Visitor pass has been ${variables.status.toLowerCase()}.`);
+      queryClient.invalidateQueries({ queryKey: ["passesHistory"] });
+    },
+    onError: (err: any) => {
+      Alert.alert("Error", err.message || "Failed to update visitor pass status.");
+    }
+  });
+
+  const handleAction = (passId: string, status: "Approved" | "Rejected") => {
+    updatePassStatusMutation.mutate({ passId, status });
+  };
+
+  const getVisitorIcon = (designation: string) => {
+    const desc = designation.toLowerCase();
+    if (desc.includes("delivery") || desc.includes("zomato") || desc.includes("swiggy")) {
+      return "delivery-dining";
+    }
+    if (desc.includes("service") || desc.includes("plumb") || desc.includes("electr") || desc.includes("clean")) {
+      return "cleaning-services";
+    }
+    return "person";
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "Approved":
+        return { bg: "rgba(0, 106, 97, 0.1)", text: theme.colors.secondary };
+      case "Verified":
+        return { bg: "rgba(46, 125, 50, 0.1)", text: "#2e7d32" };
+      case "Rejected":
+        return { bg: "rgba(186, 26, 26, 0.1)", text: theme.colors.error };
+      case "Pending":
+      default:
+        return { bg: "rgba(245, 127, 23, 0.1)", text: "#f57f17" };
+    }
+  };
+
+  const formatTime = (isoString: string) => {
+    try {
+      const date = new Date(isoString);
+      return date.toLocaleDateString("en-IN", {
+        month: "short",
+        day: "numeric",
+      }) + " at " + date.toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+    } catch {
+      return "Today";
+    }
+  };
+
+  if (!profile) return null;
+
+  // Filter lists from DB
+  const pendingPasses = historyList.filter(pass => pass.status === "Pending");
+  const upcomingGuests = historyList.filter(pass => pass.status === "Approved" && new Date(pass.expiry_time) > new Date());
+
+  // Visual mock data matching HTML exactly
+  const mockPendingPasses = [
+    {
+      id: "mock-p-1",
+      visitor_name: "Ramesh Kumar",
+      designation: "Swiggy • Delivery",
+      flat_no: profile.flatName || "B-402",
+      tower_no: profile.towerName || "Block C",
+      gate: "Main Gate",
+      avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuAqSOxGh9UnEt7aRX29od_iWb77r1fVoLYW1UStb52IaY8dhmJAYCxCS_lVMyVAdfVgWHx6u1ZcWsNDhYCbFgA44rGbrKsFXZ-qOupEsBbU8eRV0CQgT5JtGsg-V76Wb9lgFfdmBb6bB0krN7GEnFgc7PE9ST3Ta28IBV94w6cze0RrrRb2jPb5BiGZ3jNlz4WVaGd-zpiyFsEp99mhgfofmtg-PtHbP9vc0ST3cUCfAK240OoHOeqPkw",
+    }
+  ];
+
+  const mockUpcomingGuests = [
+    {
+      id: "mock-u-1",
+      visitor_name: "Ananya Sharma",
+      designation: "Personal",
+      valid_until: "Today, 9:00 PM",
+    },
+    {
+      id: "mock-u-2",
+      visitor_name: "UrbanCompany: Plumber",
+      designation: "Service",
+      valid_until: "Tom, 2:00 PM",
+    }
+  ];
+
+  const displayPending = pendingPasses.length > 0 ? pendingPasses : mockPendingPasses;
+  const displayUpcoming = upcomingGuests.length > 0 ? upcomingGuests : mockUpcomingGuests;
+
+  return (
+    <View style={styles.outerContainer}>
+      <StatusBar style="dark" />
+
+      {/* Top App Bar */}
+      <View style={styles.topAppBar}>
+        <View style={styles.topAppBarLeft}>
+          <TouchableOpacity style={styles.iconBtn}>
+            <MaterialIcons name="grid-view" size={24} color={theme.colors.onSurfaceVariant} />
+          </TouchableOpacity>
+          <Text style={styles.appBarTitle}>Visitors</Text>
+        </View>
+        <View style={styles.avatarWrapper}>
+          <Image
+            source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuBpENPfhgHlo_-hu2vi1Sc5hsmLyBkd9YdJ4Riy5fesm5hg7LPpFpSbxshtBeoGbSvYTuzHRlhihNX954tK0nIkiH6LhG_D7uawfL81dzMLjqpuuOVlmBE0WhSilez3nQn9058Jc9NOKrvtX3IlWqV9-ApnOZYBLuYdg3ZIBF24ZfEPeIl9Yv2FWD4M58l8_h0PbDJvpRas8dptC9rM3IZox3S7Z3MuX5WUda6u6EHusPxAQ_4dqAttbA" }}
+            style={styles.avatar}
+          />
+        </View>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        {/* Custom Tab Switcher inside ScrollView */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === "approvals" && styles.tabButtonActive]}
+            onPress={() => setActiveTab("approvals")}
+          >
+            <Text style={[styles.tabText, activeTab === "approvals" && styles.tabTextActive]}>
+              Approvals
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === "history" && styles.tabButtonActive]}
+            onPress={() => setActiveTab("history")}
+          >
+            <Text style={[styles.tabText, activeTab === "history" && styles.tabTextActive]}>
+              History
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {activeTab === "approvals" ? (
+          <View style={styles.sectionContainer}>
+            {/* Pending Requests Section */}
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Pending Requests</Text>
+              <View style={styles.errorBadge}>
+                <Text style={styles.errorBadgeText}>
+                  {pendingPasses.length > 0 ? `${pendingPasses.length} New` : "1 New"}
+                </Text>
+              </View>
+            </View>
+
+            {displayPending.map((item: any) => {
+              const isMock = item.id.startsWith("mock-");
+              return (
+                <View key={item.id} style={styles.pendingCard}>
+                  <View style={styles.pendingDetailsRow}>
+                    <Image
+                      source={{ uri: item.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80" }}
+                      style={styles.visitorAvatar}
+                    />
+                    <View style={styles.pendingInfo}>
+                      <Text style={styles.visitorNameText}>{item.visitor_name}</Text>
+                      <View style={styles.designationRow}>
+                        <MaterialIcons name="restaurant" size={14} color={theme.colors.secondary} />
+                        <Text style={styles.designationText}>{item.designation}</Text>
+                      </View>
+                      <Text style={styles.flatText}>Flat: {item.tower_no || "B"}-{item.flat_no || "402"}</Text>
+                    </View>
+                    <View style={styles.gateWrapper}>
+                      <Text style={styles.gateLabel}>Waiting at</Text>
+                      <Text style={styles.gateText}>{item.gate || "Main Gate"}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.actionButtonRow}>
+                    <TouchableOpacity
+                      style={styles.rejectBtn}
+                      disabled={updatePassStatusMutation.isPending}
+                      onPress={() => {
+                        if (isMock) {
+                          Alert.alert("Action Mocked", "Rejected visitor via mock demo!");
+                        } else {
+                          handleAction(item.id, "Rejected");
+                        }
+                      }}
+                    >
+                      <MaterialIcons name="close" size={16} color={theme.colors.error} />
+                      <Text style={styles.rejectBtnText}>Reject</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.approveBtn}
+                      disabled={updatePassStatusMutation.isPending}
+                      onPress={() => {
+                        if (isMock) {
+                          Alert.alert("Action Mocked", "Approved visitor via mock demo!");
+                        } else {
+                          handleAction(item.id, "Approved");
+                        }
+                      }}
+                    >
+                      <MaterialIcons name="check" size={16} color="#ffffff" />
+                      <Text style={styles.approveBtnText}>Approve</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })}
+
+            {/* Upcoming Guests */}
+            <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 12 }]}>Upcoming Guests</Text>
+            <View style={styles.upcomingList}>
+              {displayUpcoming.map((item: any) => {
+                const isMock = item.id.startsWith("mock-");
+                return (
+                  <View key={item.id} style={styles.upcomingCard}>
+                    <View style={styles.upcomingLeft}>
+                      <View style={[styles.upcomingIconBox, { backgroundColor: item.designation === "Service" ? "rgba(213,227,253,0.3)" : "rgba(134,242,228,0.2)" }]}>
+                        <MaterialIcons
+                          name={item.designation === "Service" ? "handyman" : "person"}
+                          size={20}
+                          color={item.designation === "Service" ? theme.colors.outline : theme.colors.secondary}
+                        />
+                      </View>
+                      <View>
+                        <Text style={styles.upcomingNameText}>{item.visitor_name}</Text>
+                        <Text style={styles.upcomingDescText}>Visitor Type: {item.designation}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.upcomingRight}>
+                      <Text style={styles.validLabel}>Valid Until</Text>
+                      <Text style={styles.validTime}>
+                        {isMock ? item.valid_until : formatTime(item.expiry_time)}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Safety Banner */}
+            <View style={styles.bannerCard}>
+              <ImageBackground
+                source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuCDRxlvqhh6kUzegIEZ4Rqg5Rr-aEY7Sli6EslMQZHaceiGmGGIIqODqnfjr5PyytQKkUwf1QI_lbVpIxhX1r_MgJ8Mthu9CaQ4YanEQs-YNYmSZrqmp028mB0pBcWiqAJV5CQFVdeTKMFnBbdP_eYh9vWsIOuU7v1M_KogjB5kI5E5E7KlrMJzqjjJ160B8M9Zya9uLZ4vAz2tbpeyTQLTBECRvNhgwwSCYi3gWDrrvwaOC0U7F0ZqwA" }}
+                style={styles.bannerBg}
+                imageStyle={{ borderRadius: 16 }}
+              >
+                <View style={styles.bannerOverlay}>
+                  <Text style={styles.bannerTitle}>Safety First</Text>
+                  <Text style={styles.bannerText}>Monitor all entries in real-time for ultimate peace of mind.</Text>
+                </View>
+              </ImageBackground>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.historyList}>
+            {isLoading ? (
+              <ActivityIndicator size="small" color={theme.colors.secondary} style={{ marginVertical: 32 }} />
+            ) : historyList.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <MaterialIcons name="history" size={48} color={theme.colors.outlineVariant} />
+                <Text style={styles.emptyTitle}>No Visitor History</Text>
+                <Text style={styles.emptyText}>Visitor passes you generate will show up here.</Text>
+              </View>
+            ) : (
+              historyList.map((item) => {
+                const statusColor = getStatusColor(item.status);
+                return (
+                  <View key={item.id} style={styles.historyCard}>
+                    <View style={styles.historyLeft}>
+                      <View style={styles.historyIconWrapper}>
+                        <MaterialIcons name={getVisitorIcon(item.designation)} size={22} color={theme.colors.onSurfaceVariant} />
+                      </View>
+                      <View>
+                        <Text style={styles.historyName}>{item.visitor_name}</Text>
+                        <Text style={styles.historyDetails}>
+                          {item.designation} • {formatTime(item.created_at)}
+                        </Text>
+                        <Text style={styles.historyDestination}>Destination: Tower {item.tower_no}, Flat {item.flat_no}</Text>
+                      </View>
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: statusColor.bg }]}>
+                      <Text style={[styles.statusBadgeText, { color: statusColor.text }]}>{item.status}</Text>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+      </ScrollView>
+
+      {/* FAB */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push("/request-pass" as any)}
+      >
+        <MaterialIcons name="add" size={28} color="#ffffff" />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  outerContainer: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  topAppBar: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 80,
+    paddingTop: 32,
+    backgroundColor: theme.colors.surface,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: theme.spacing.containerMarginMobile,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(198, 198, 205, 0.2)",
+    zIndex: 50,
+  },
+  topAppBarLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  iconBtn: {
+    padding: 4,
+  },
+  appBarTitle: {
+    ...theme.typography.headlineLgMobile,
+    color: theme.colors.primary,
+    fontWeight: "700",
+  },
+  avatarWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+  },
+  avatar: {
+    width: "100%",
+    height: "100%",
+  },
+  tabContainer: {
+    flexDirection: "row",
+    backgroundColor: theme.colors.surfaceContainerLow,
+    padding: 4,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+    borderRadius: 8,
+  },
+  tabButtonActive: {
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  tabText: {
+    ...theme.typography.button,
+    color: theme.colors.onSurfaceVariant,
+  },
+  tabTextActive: {
+    color: theme.colors.primary,
+    fontWeight: "600",
+  },
+  scrollContainer: {
+    paddingHorizontal: theme.spacing.containerMarginMobile,
+    paddingTop: 96,
+    paddingBottom: 100,
+  },
+  sectionContainer: {
+    gap: theme.spacing.md,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: theme.spacing.sm,
+  },
+  sectionTitle: {
+    ...theme.typography.headlineMd,
+    color: theme.colors.primary,
+    fontWeight: "600",
+  },
+  errorBadge: {
+    backgroundColor: theme.colors.errorContainer,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  errorBadgeText: {
+    ...theme.typography.labelMd,
+    color: theme.colors.onErrorContainer,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  pendingCard: {
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    borderRadius: 16,
+    padding: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: "rgba(198, 198, 205, 0.3)",
+    gap: 16,
+    shadowColor: "rgba(15, 23, 42, 0.04)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  pendingDetailsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  visitorAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 8,
+    backgroundColor: theme.colors.background,
+  },
+  pendingInfo: {
+    flex: 1,
+    marginLeft: theme.spacing.md,
+    gap: 2,
+  },
+  visitorNameText: {
+    ...theme.typography.headlineMd,
+    fontSize: 16,
+    color: theme.colors.primary,
+    fontWeight: "600",
+  },
+  designationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 2,
+  },
+  designationText: {
+    ...theme.typography.bodyMd,
+    color: theme.colors.onSurfaceVariant,
+  },
+  flatText: {
+    ...theme.typography.labelMd,
+    color: theme.colors.onSurfaceVariant,
+    marginTop: 2,
+  },
+  gateWrapper: {
+    alignItems: "flex-end",
+  },
+  gateLabel: {
+    ...theme.typography.labelMd,
+    color: theme.colors.onSurfaceVariant,
+    fontSize: 10,
+  },
+  gateText: {
+    ...theme.typography.headlineMd,
+    fontSize: 14,
+    color: theme.colors.primary,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  actionButtonRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  rejectBtn: {
+    flex: 1,
+    flexDirection: "row",
+    height: 44,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+  },
+  rejectBtnText: {
+    ...theme.typography.button,
+    color: theme.colors.error,
+  },
+  approveBtn: {
+    flex: 1,
+    flexDirection: "row",
+    height: 44,
+    backgroundColor: theme.colors.secondary,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+    shadowColor: theme.colors.secondary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  approveBtnText: {
+    ...theme.typography.button,
+    color: "#ffffff",
+  },
+  upcomingList: {
+    gap: 12,
+  },
+  upcomingCard: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(198, 198, 205, 0.2)",
+  },
+  upcomingLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.md,
+  },
+  upcomingIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  upcomingNameText: {
+    ...theme.typography.button,
+    color: theme.colors.primary,
+    fontWeight: "700",
+  },
+  upcomingDescText: {
+    ...theme.typography.labelMd,
+    color: theme.colors.onSurfaceVariant,
+    marginTop: 2,
+  },
+  upcomingRight: {
+    alignItems: "flex-end",
+  },
+  validLabel: {
+    ...theme.typography.labelMd,
+    color: theme.colors.onSurfaceVariant,
+    fontSize: 10,
+  },
+  validTime: {
+    ...theme.typography.button,
+    color: theme.colors.secondary,
+    marginTop: 2,
+  },
+  bannerCard: {
+    height: 128,
+    borderRadius: 16,
+    overflow: "hidden",
+    marginTop: 24,
+  },
+  bannerBg: {
+    width: "100%",
+    height: "100%",
+  },
+  bannerOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(13, 28, 47, 0.75)",
+    padding: 20,
+    justifyContent: "center",
+  },
+  bannerTitle: {
+    ...theme.typography.headlineMd,
+    color: "#ffffff",
+    fontWeight: "700",
+  },
+  bannerText: {
+    ...theme.typography.bodyMd,
+    color: "rgba(255, 255, 255, 0.8)",
+    marginTop: 4,
+    maxWidth: 240,
+  },
+  historyList: {
+    gap: 12,
+  },
+  historyCard: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    borderRadius: 16,
+    padding: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+  },
+  historyLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.md,
+  },
+  historyIconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: theme.colors.background,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  historyName: {
+    ...theme.typography.button,
+    color: theme.colors.primary,
+    fontWeight: "700",
+  },
+  historyDetails: {
+    ...theme.typography.labelMd,
+    color: theme.colors.onSurfaceVariant,
+    marginTop: 2,
+  },
+  historyDestination: {
+    ...theme.typography.labelMd,
+    fontSize: 10,
+    color: theme.colors.outline,
+    marginTop: 2,
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusBadgeText: {
+    ...theme.typography.labelMd,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  emptyCard: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 64,
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    gap: 12,
+  },
+  emptyTitle: {
+    ...theme.typography.headlineMd,
+    color: theme.colors.primary,
+    fontWeight: "700",
+  },
+  emptyText: {
+    ...theme.typography.bodyMd,
+    color: theme.colors.onSurfaceVariant,
+    textAlign: "center",
+    paddingHorizontal: 20,
+  },
+  fab: {
+    position: "absolute",
+    bottom: 24,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: theme.colors.secondary,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: theme.colors.secondary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+    zIndex: 40,
+  },
+});
