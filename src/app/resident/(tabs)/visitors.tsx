@@ -116,8 +116,8 @@ export default function VisitorsScreen() {
     }
   ];
 
-  const displayPending = pendingPasses.length > 0 ? pendingPasses : mockPendingPasses;
-  const displayUpcoming = upcomingGuests.length > 0 ? upcomingGuests : mockUpcomingGuests;
+  const displayPending = pendingPasses;
+  const displayUpcoming = upcomingGuests;
 
   return (
     <View style={styles.outerContainer}>
@@ -167,98 +167,112 @@ export default function VisitorsScreen() {
               <Text style={styles.sectionTitle}>Pending Requests</Text>
               <View style={styles.errorBadge}>
                 <Text style={styles.errorBadgeText}>
-                  {pendingPasses.length > 0 ? `${pendingPasses.length} New` : "1 New"}
+                  {pendingPasses.length} New
                 </Text>
               </View>
             </View>
 
-            {displayPending.map((item: any) => {
-              const isMock = item.id.startsWith("mock-");
-              return (
-                <View key={item.id} style={styles.pendingCard}>
-                  <View style={styles.pendingDetailsRow}>
-                    <Image
-                      source={{ uri: item.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80" }}
-                      style={styles.visitorAvatar}
-                    />
-                    <View style={styles.pendingInfo}>
-                      <Text style={styles.visitorNameText}>{item.visitor_name}</Text>
-                      <View style={styles.designationRow}>
-                        <MaterialIcons name="restaurant" size={14} color={theme.colors.secondary} />
-                        <Text style={styles.designationText}>{item.designation}</Text>
-                      </View>
-                      <Text style={styles.flatText}>Flat: {item.tower_no || "B"}-{item.flat_no || "402"}</Text>
-                    </View>
-                    <View style={styles.gateWrapper}>
-                      <Text style={styles.gateLabel}>Waiting at</Text>
-                      <Text style={styles.gateText}>{item.gate || "Main Gate"}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.actionButtonRow}>
-                    <TouchableOpacity
-                      style={styles.rejectBtn}
-                      disabled={updatePassStatusMutation.isPending}
-                      onPress={() => {
-                        if (isMock) {
-                          Alert.alert("Action Mocked", "Rejected visitor via mock demo!");
-                        } else {
-                          handleAction(item.id, "Rejected");
-                        }
-                      }}
-                    >
-                      <MaterialIcons name="close" size={16} color={theme.colors.error} />
-                      <Text style={styles.rejectBtnText}>Reject</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.approveBtn}
-                      disabled={updatePassStatusMutation.isPending}
-                      onPress={() => {
-                        if (isMock) {
-                          Alert.alert("Action Mocked", "Approved visitor via mock demo!");
-                        } else {
-                          handleAction(item.id, "Approved");
-                        }
-                      }}
-                    >
-                      <MaterialIcons name="check" size={16} color="#ffffff" />
-                      <Text style={styles.approveBtnText}>Approve</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            })}
-
-            {/* Upcoming Guests */}
-            <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 12 }]}>Upcoming Guests</Text>
-            <View style={styles.upcomingList}>
-              {displayUpcoming.map((item: any) => {
+            {displayPending.length > 0 ? (
+              displayPending.map((item: any) => {
                 const isMock = item.id.startsWith("mock-");
                 return (
-                  <View key={item.id} style={styles.upcomingCard}>
-                    <View style={styles.upcomingLeft}>
-                      <View style={[styles.upcomingIconBox, { backgroundColor: item.designation === "Service" ? "rgba(213,227,253,0.3)" : "rgba(134,242,228,0.2)" }]}>
-                        <MaterialIcons
-                          name={item.designation === "Service" ? "handyman" : "person"}
-                          size={20}
-                          color={item.designation === "Service" ? theme.colors.outline : theme.colors.secondary}
-                        />
+                  <View key={item.id} style={styles.pendingCard}>
+                    <View style={styles.pendingDetailsRow}>
+                      <Image
+                        source={{ uri: item.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.visitor_name)}&background=random&color=fff` }}
+                        style={styles.visitorAvatar}
+                      />
+                      <View style={styles.pendingInfo}>
+                        <Text style={styles.visitorNameText}>{item.visitor_name}</Text>
+                        <View style={styles.designationRow}>
+                          <MaterialIcons name={getVisitorIcon(item.designation)} size={14} color={theme.colors.secondary} />
+                          <Text style={styles.designationText}>{item.designation}</Text>
+                        </View>
+                        <Text style={styles.flatText}>Flat: {item.tower_no || "B"}-{item.flat_no || "402"}</Text>
                       </View>
-                      <View>
-                        <Text style={styles.upcomingNameText}>{item.visitor_name}</Text>
-                        <Text style={styles.upcomingDescText}>Visitor Type: {item.designation}</Text>
+                      <View style={styles.gateWrapper}>
+                        <Text style={styles.gateLabel}>Waiting at</Text>
+                        <Text style={styles.gateText}>{item.gate || "Main Gate"}</Text>
                       </View>
                     </View>
-                    <View style={styles.upcomingRight}>
-                      <Text style={styles.validLabel}>Valid Until</Text>
-                      <Text style={styles.validTime}>
-                        {isMock ? item.valid_until : formatTime(item.expiry_time)}
-                      </Text>
+
+                    <View style={styles.actionButtonRow}>
+                      <TouchableOpacity
+                        style={styles.rejectBtn}
+                        disabled={updatePassStatusMutation.isPending}
+                        onPress={() => {
+                          if (isMock) {
+                            Alert.alert("Action Mocked", "Rejected visitor via mock demo!");
+                          } else {
+                            handleAction(item.id, "Rejected");
+                          }
+                        }}
+                      >
+                        <MaterialIcons name="close" size={16} color={theme.colors.error} />
+                        <Text style={styles.rejectBtnText}>Reject</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.approveBtn}
+                        disabled={updatePassStatusMutation.isPending}
+                        onPress={() => {
+                          if (isMock) {
+                            Alert.alert("Action Mocked", "Approved visitor via mock demo!");
+                          } else {
+                            handleAction(item.id, "Approved");
+                          }
+                        }}
+                      >
+                        <MaterialIcons name="check" size={16} color="#ffffff" />
+                        <Text style={styles.approveBtnText}>Approve</Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
                 );
-              })}
-            </View>
+              })
+            ) : (
+              <View style={styles.emptyPendingCard}>
+                <MaterialIcons name="doorbell" size={32} color={theme.colors.outline} />
+                <Text style={styles.emptyPendingText}>No pending requests at the gate.</Text>
+              </View>
+            )}
+
+            {/* Upcoming Guests */}
+            <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 12 }]}>Upcoming Guests</Text>
+            {displayUpcoming.length > 0 ? (
+              <View style={styles.upcomingList}>
+                {displayUpcoming.map((item: any) => {
+                  const isMock = item.id.startsWith("mock-");
+                  return (
+                    <View key={item.id} style={styles.upcomingCard}>
+                      <View style={styles.upcomingLeft}>
+                        <View style={[styles.upcomingIconBox, { backgroundColor: item.designation === "Service" ? "rgba(213,227,253,0.3)" : "rgba(134,242,228,0.2)" }]}>
+                          <MaterialIcons
+                            name={item.designation === "Service" ? "handyman" : "person"}
+                            size={20}
+                            color={item.designation === "Service" ? theme.colors.outline : theme.colors.secondary}
+                          />
+                        </View>
+                        <View>
+                          <Text style={styles.upcomingNameText}>{item.visitor_name}</Text>
+                          <Text style={styles.upcomingDescText}>Visitor Type: {item.designation}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.upcomingRight}>
+                        <Text style={styles.validLabel}>Valid Until</Text>
+                        <Text style={styles.validTime}>
+                          {isMock ? item.valid_until : formatTime(item.expiry_time)}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={styles.emptyPendingCard}>
+                <MaterialIcons name="event-available" size={32} color={theme.colors.outline} />
+                <Text style={styles.emptyPendingText}>No upcoming scheduled visitors.</Text>
+              </View>
+            )}
 
             {/* Safety Banner */}
             <View style={styles.bannerCard}>
@@ -695,5 +709,19 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
     zIndex: 40,
+  },
+  emptyPendingCard: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 32,
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    gap: 8,
+  },
+  emptyPendingText: {
+    ...theme.typography.bodyMd,
+    color: theme.colors.outline,
   },
 });

@@ -1,35 +1,157 @@
-import React, { useState } from "react";
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert } from "react-native";
+import React, { useState, useEffect } from "react";
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../../theme";
+import { useProfileStore } from "../../../store/useProfileStore";
+import { supabase } from "../../../../utils/supabase";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function MaintenanceDuesScreen() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"pending" | "history">("pending");
+  const insets = useSafeAreaInsets();
+  const { profile } = useProfileStore();
 
-  const handlePayNow = () => {
-    Alert.alert("Payment Gateway", "Proceed to secure payment of ₹4,500.00?", [
-      { text: "Pay", onPress: () => Alert.alert("Success", "Payment of ₹4,500.00 received! Thank you.") },
-      { text: "Cancel", style: "cancel" },
-    ]);
+  const [activeTab, setActiveTab] = useState<"pending" | "history">("pending");
+  const [pendingInvoices, setPendingInvoices] = useState<any[]>([]);
+  const [paymentsHistory, setPaymentsHistory] = useState<any[]>([]);
+  const [totalDues, setTotalDues] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  const fetchInvoices = async () => {
+    if (!profile?.id) return;
+    try {
+      setLoading(true);
+      // 1. Get flat_id for the resident
+      const { data: memberData } = await supabase
+        .from("societymembers")
+        .select("flat_id")
+        .eq("user_id", profile.id)
+        .maybeSingle();
+
+      if (memberData?.flat_id) {
+        // Query pending invoices
+        const { data: pInvoices } = await supabase
+          .from("maintenance_invoices")
+          .select("*")
+          .eq("flat_id", memberData.flat_id)
+          .eq("status", "Pending")
+          .order("due_date", { ascending: true });
+
+        if (pInvoices) {
+          setPendingInvoices(pInvoices);
+          const sum = pInvoices.reduce((acc, curr) => acc + Number(curr.amount), 0);
+          setTotalDues(sum);
+        }
+
+        // Query paid invoices / payments history
+        const { data: paidPayments } = await supabase
+          .from("maintenance_payments")
+          .select(`
+            id,
+            amount_paid,
+            payment_method,
+            payment_reference,
+            paid_at,
+            maintenance_invoices!inner (
+              billing_period
+            )
+          `)
+          .eq("paid_by", profile.id)
+          .order("paid_at", { ascending: false });
+
+        if (paidPayments) {
+          setPaymentsHistory(paidPayments);
+        }
+      }
+    } catch (err) {
+      console.error("Error loading invoices:", err);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => {
+    if (profile?.id) {
+      fetchInvoices();
+    }
+  }, [profile?.id]);
+
+  const handlePayNow = async () => {
+    if (!profile?.id) return;
+    if (totalDues === 0) {
+      Alert.alert("No Dues", "You do not have any pending maintenance dues.");
+      return;
+    }
+
+    Alert.alert(
+      "Payment Gateway",
+      `Proceed to secure payment of ₹${totalDues.toLocaleString("en-IN", { minimumFractionDigits: 2 })}?`,
+      [
+        {
+          text: "Pay",
+          onPress: async () => {
+            try {
+              setLoading(true);
+              const reference = "TXN-" + Math.floor(100000 + Math.random() * 900000);
+              
+              for (const invoice of pendingInvoices) {
+                // Update invoice
+                const { error: invoiceErr } = await supabase
+                  .from("maintenance_invoices")
+                  .update({ status: "Paid" })
+                  .eq("id", invoice.id);
+
+                if (invoiceErr) throw invoiceErr;
+
+                // Insert payment log
+                const { error: paymentErr } = await supabase
+                  .from("maintenance_payments")
+                  .insert({
+                    invoice_id: invoice.id,
+                    amount_paid: invoice.amount,
+                    paid_by: profile.id,
+                    payment_method: "UPI",
+                    payment_reference: reference,
+                  });
+
+                if (paymentErr) throw paymentErr;
+              }
+
+              Alert.alert(
+                "Payment Success",
+                `Payment of ₹${totalDues.toLocaleString("en-IN", { minimumFractionDigits: 2 })} received!\nReference: ${reference}`
+              );
+              fetchInvoices();
+            } catch (err: any) {
+              Alert.alert("Payment Error", err.message || "Failed to process payment.");
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+        { text: "Cancel", style: "cancel" },
+      ]
+    );
+  };
+
+  if (!profile) return null;
 
   return (
     <View style={styles.outerContainer}>
       <StatusBar style="light" />
 
       {/* Top App Bar */}
-      <View style={styles.topAppBar}>
+      <View style={[styles.topAppBar, { paddingTop: insets.top }]}>
         <View style={styles.topAppBarLeft}>
           <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
             <MaterialIcons name="arrow-back" size={24} color={theme.colors.primary} />
           </TouchableOpacity>
           <Text style={styles.appBarTitle}>Maintenance Dues</Text>
         </View>
-        <TouchableOpacity style={styles.notifyBtn} onPress={() => Alert.alert("Notifications", "No new billing alerts.")}>
-          <MaterialIcons name="notifications" size={24} color={theme.colors.onSurfaceVariant} />
+        <TouchableOpacity style={styles.notifyBtn} onPress={fetchInvoices}>
+          <MaterialIcons name="refresh" size={24} color={theme.colors.onSurfaceVariant} />
         </TouchableOpacity>
       </View>
 
@@ -38,11 +160,15 @@ export default function MaintenanceDuesScreen() {
         <View style={styles.summaryCard}>
           <View style={styles.summaryContent}>
             <Text style={styles.summaryLabel}>Current Balance Due</Text>
-            <Text style={styles.balanceText}>₹4,500.00</Text>
+            <Text style={styles.balanceText}>
+              ₹{totalDues.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            </Text>
 
             <View style={styles.dueDateRow}>
               <MaterialIcons name="calendar-today" size={14} color="rgba(255,255,255,0.8)" />
-              <Text style={styles.dueDateText}>Due by Oct 31, 2023</Text>
+              <Text style={styles.dueDateText}>
+                {pendingInvoices.length > 0 ? `Next Due: ${pendingInvoices[0].due_date}` : "No pending dues"}
+              </Text>
             </View>
 
             <TouchableOpacity style={styles.payBtn} onPress={handlePayNow}>
@@ -73,59 +199,47 @@ export default function MaintenanceDuesScreen() {
           </TouchableOpacity>
         </View>
 
-        {activeTab === "pending" ? (
+        {loading ? (
+          <ActivityIndicator size="small" color={theme.colors.secondary} style={{ padding: 40 }} />
+        ) : activeTab === "pending" ? (
           <View style={styles.breakdownSection}>
             {/* Header */}
             <View style={styles.breakdownHeader}>
               <Text style={styles.breakdownTitle}>Bill Breakdown</Text>
-              <Text style={styles.monthText}>October 2023</Text>
+              <Text style={styles.monthText}>
+                {pendingInvoices.length > 0 ? pendingInvoices[0].billing_period : "Clean Sheet"}
+              </Text>
             </View>
 
             {/* Breakdown List Card */}
             <View style={styles.breakdownCard}>
               <View style={styles.breakdownItems}>
-                {/* Item 1 */}
-                <View style={styles.breakdownRow}>
-                  <View style={styles.rowLeft}>
-                    <View style={styles.itemIconWrapper}>
-                      <MaterialIcons name="home-work" size={20} color={theme.colors.primary} />
+                {pendingInvoices.length > 0 ? (
+                  pendingInvoices.map((inv, idx) => (
+                    <View key={inv.id}>
+                      <View style={styles.breakdownRow}>
+                        <View style={styles.rowLeft}>
+                          <View style={styles.itemIconWrapper}>
+                            <MaterialIcons name="home-work" size={20} color={theme.colors.primary} />
+                          </View>
+                          <Text style={styles.itemName}>Invoice for {inv.billing_period}</Text>
+                        </View>
+                        <Text style={styles.itemVal}>₹{Number(inv.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</Text>
+                      </View>
+                      {idx < pendingInvoices.length - 1 && <View style={styles.divider} />}
                     </View>
-                    <Text style={styles.itemName}>Monthly Maintenance</Text>
-                  </View>
-                  <Text style={styles.itemVal}>₹3,200.00</Text>
-                </View>
-
-                <View style={styles.divider} />
-
-                {/* Item 2 */}
-                <View style={styles.breakdownRow}>
-                  <View style={styles.rowLeft}>
-                    <View style={styles.itemIconWrapper}>
-                      <MaterialIcons name="savings" size={20} color={theme.colors.primary} />
-                    </View>
-                    <Text style={styles.itemName}>Sinking Fund</Text>
-                  </View>
-                  <Text style={styles.itemVal}>₹800.00</Text>
-                </View>
-
-                <View style={styles.divider} />
-
-                {/* Item 3 */}
-                <View style={styles.breakdownRow}>
-                  <View style={styles.rowLeft}>
-                    <View style={styles.itemIconWrapper}>
-                      <MaterialIcons name="water-drop" size={20} color={theme.colors.primary} />
-                    </View>
-                    <Text style={styles.itemName}>Water Charges</Text>
-                  </View>
-                  <Text style={styles.itemVal}>₹500.00</Text>
-                </View>
+                  ))
+                ) : (
+                  <Text style={styles.emptyBreakdownText}>No unpaid invoices found.</Text>
+                )}
               </View>
 
               {/* Total Row */}
               <View style={styles.totalRow}>
                 <Text style={styles.totalLabel}>Total Amount Due</Text>
-                <Text style={styles.totalVal}>₹4,500.00</Text>
+                <Text style={styles.totalVal}>
+                  ₹{totalDues.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                </Text>
               </View>
             </View>
 
@@ -133,39 +247,38 @@ export default function MaintenanceDuesScreen() {
             <View style={styles.penaltyCard}>
               <MaterialIcons name="info" size={20} color={theme.colors.error} />
               <Text style={styles.penaltyText}>
-                <Text style={{ fontWeight: "700" }}>Note:</Text> A late payment penalty of 2% per month will be applicable on dues paid after the due date (Oct 31, 2023).
+                <Text style={{ fontWeight: "700" }}>Note:</Text> Late payments may attract penalties. Please clear all invoices before the due date to avoid service disruptions.
               </Text>
             </View>
           </View>
         ) : (
           <View style={styles.historySection}>
-            <View style={styles.historyCard}>
-              <View style={styles.historyHeader}>
-                <Text style={styles.historyDate}>September 2023</Text>
-                <View style={styles.statusBadge}>
-                  <Text style={styles.statusBadgeText}>PAID</Text>
+            {paymentsHistory.length > 0 ? (
+              paymentsHistory.map((item) => (
+                <View key={item.id} style={styles.historyCard}>
+                  <View style={styles.historyHeader}>
+                    <Text style={styles.historyDate}>
+                      {item.maintenance_invoices?.billing_period || "Monthly Bill"}
+                    </Text>
+                    <View style={styles.statusBadge}>
+                      <Text style={styles.statusBadgeText}>PAID</Text>
+                    </View>
+                  </View>
+                  <View style={styles.historyRow}>
+                    <Text style={styles.historyLabel}>Maintenance Bill ({item.payment_method})</Text>
+                    <Text style={styles.historyVal}>₹{Number(item.amount_paid).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</Text>
+                  </View>
+                  <Text style={styles.receiptDate}>
+                    Paid on {new Date(item.paid_at).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" })} • Txn: {item.payment_reference}
+                  </Text>
                 </View>
+              ))
+            ) : (
+              <View style={styles.emptyHistoryBox}>
+                <MaterialIcons name="receipt" size={36} color={theme.colors.outline} />
+                <Text style={styles.emptyHistoryText}>No payments logged in the history ledger.</Text>
               </View>
-              <View style={styles.historyRow}>
-                <Text style={styles.historyLabel}>Maintenance Bill</Text>
-                <Text style={styles.historyVal}>₹4,500.00</Text>
-              </View>
-              <Text style={styles.receiptDate}>Paid on Sep 28, 2023 • Txn ID: HC-982736</Text>
-            </View>
-
-            <View style={styles.historyCard}>
-              <View style={styles.historyHeader}>
-                <Text style={styles.historyDate}>August 2023</Text>
-                <View style={styles.statusBadge}>
-                  <Text style={styles.statusBadgeText}>PAID</Text>
-                </View>
-              </View>
-              <View style={styles.historyRow}>
-                <Text style={styles.historyLabel}>Maintenance Bill</Text>
-                <Text style={styles.historyVal}>₹4,500.00</Text>
-              </View>
-              <Text style={styles.receiptDate}>Paid on Aug 27, 2023 • Txn ID: HC-972183</Text>
-            </View>
+            )}
           </View>
         )}
 
@@ -195,17 +308,12 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   topAppBar: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
     height: 80,
-    paddingTop: 32,
-    backgroundColor: theme.colors.surface,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: theme.spacing.containerMarginMobile,
+    backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(198, 198, 205, 0.2)",
     zIndex: 50,
@@ -228,7 +336,7 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     paddingHorizontal: theme.spacing.containerMarginMobile,
-    paddingTop: 96,
+    paddingTop: theme.spacing.md,
     paddingBottom: 40,
     gap: theme.spacing.lg,
   },
@@ -306,10 +414,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
-    elevation: 1,
+    elevation: 2,
   },
   tabText: {
-    ...theme.typography.labelMd,
+    ...theme.typography.button,
     color: theme.colors.onSurfaceVariant,
   },
   tabTextActive: {
@@ -322,7 +430,8 @@ const styles = StyleSheet.create({
   breakdownHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-end",
+    paddingHorizontal: 4,
   },
   breakdownTitle: {
     ...theme.typography.headlineMd,
@@ -330,18 +439,19 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   monthText: {
-    ...theme.typography.labelMd,
+    ...theme.typography.bodyMd,
     color: theme.colors.onSurfaceVariant,
+    fontWeight: "500",
   },
   breakdownCard: {
     backgroundColor: theme.colors.surfaceContainerLowest,
-    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(198, 198, 205, 0.3)",
+    borderColor: theme.colors.outlineVariant,
+    borderRadius: 16,
     overflow: "hidden",
   },
   breakdownItems: {
-    padding: theme.spacing.md,
+    padding: 16,
     gap: 12,
   },
   breakdownRow: {
@@ -355,16 +465,16 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   itemIconWrapper: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: theme.colors.surfaceContainerHighest,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.surfaceContainerLow,
     justifyContent: "center",
     alignItems: "center",
   },
   itemName: {
-    ...theme.typography.bodyLg,
-    color: theme.colors.onSurface,
+    ...theme.typography.bodyMd,
+    color: theme.colors.primary,
     fontWeight: "500",
   },
   itemVal: {
@@ -377,49 +487,52 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(198, 198, 205, 0.2)",
   },
   totalRow: {
-    borderTopWidth: 1,
-    borderTopColor: "rgba(198, 198, 205, 0.3)",
-    backgroundColor: theme.colors.surfaceContainerLowest,
-    padding: theme.spacing.md,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    backgroundColor: theme.colors.surfaceContainerLow,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(198, 198, 205, 0.3)",
   },
   totalLabel: {
-    ...theme.typography.headlineMd,
+    ...theme.typography.button,
     color: theme.colors.primary,
     fontWeight: "700",
   },
   totalVal: {
     ...theme.typography.headlineMd,
-    color: theme.colors.secondary,
-    fontWeight: "700",
+    color: theme.colors.primary,
+    fontWeight: "800",
   },
   penaltyCard: {
     flexDirection: "row",
-    gap: 12,
-    backgroundColor: "rgba(186, 26, 26, 0.05)",
+    backgroundColor: "rgba(186, 26, 26, 0.04)",
     borderWidth: 1,
-    borderColor: "rgba(186, 26, 26, 0.1)",
-    borderRadius: 8,
-    padding: theme.spacing.md,
+    borderColor: "rgba(186, 26, 26, 0.12)",
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+    alignItems: "flex-start",
   },
   penaltyText: {
     flex: 1,
     ...theme.typography.bodyMd,
-    color: theme.colors.onErrorContainer,
+    color: theme.colors.error,
+    fontSize: 12,
     lineHeight: 18,
   },
   historySection: {
-    gap: 16,
+    gap: 14,
   },
   historyCard: {
     backgroundColor: theme.colors.surfaceContainerLowest,
-    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(198, 198, 205, 0.3)",
-    padding: theme.spacing.md,
-    gap: 8,
+    borderColor: theme.colors.outlineVariant,
+    borderRadius: 16,
+    padding: 16,
+    gap: 10,
   },
   historyHeader: {
     flexDirection: "row",
@@ -428,19 +541,20 @@ const styles = StyleSheet.create({
   },
   historyDate: {
     ...theme.typography.button,
-    color: theme.colors.primary,
     fontWeight: "700",
+    color: theme.colors.primary,
   },
   statusBadge: {
-    backgroundColor: "rgba(76, 175, 80, 0.15)",
+    backgroundColor: "rgba(0, 106, 97, 0.1)",
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 6,
+    borderRadius: 4,
   },
   statusBadgeText: {
+    ...theme.typography.labelMd,
     fontSize: 9,
+    color: theme.colors.secondary,
     fontWeight: "800",
-    color: "#2e7d32",
   },
   historyRow: {
     flexDirection: "row",
@@ -458,31 +572,40 @@ const styles = StyleSheet.create({
   },
   receiptDate: {
     ...theme.typography.labelMd,
-    fontSize: 10,
     color: theme.colors.outline,
-    marginTop: 2,
+    fontSize: 10,
   },
   trustSection: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: 20,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(198, 198, 205, 0.2)",
-    paddingVertical: 24,
-    marginTop: 8,
+    justifyContent: "space-around",
+    marginTop: theme.spacing.lg,
+    paddingVertical: 8,
   },
   trustBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    opacity: 0.6,
+    gap: 4,
   },
   trustBadgeText: {
     ...theme.typography.labelMd,
-    fontSize: 9,
+    fontSize: 8,
     color: theme.colors.outline,
     fontWeight: "700",
-    letterSpacing: 0.5,
+  },
+  emptyBreakdownText: {
+    ...theme.typography.bodyMd,
+    color: theme.colors.outline,
+    textAlign: "center",
+    padding: 20,
+  },
+  emptyHistoryBox: {
+    alignItems: "center",
+    padding: 40,
+    gap: 8,
+  },
+  emptyHistoryText: {
+    ...theme.typography.bodyMd,
+    color: theme.colors.outline,
+    textAlign: "center",
   },
 });

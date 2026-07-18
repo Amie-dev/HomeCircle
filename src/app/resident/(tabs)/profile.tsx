@@ -1,13 +1,16 @@
-import React, { useState } from "react";
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, Switch, Image } from "react-native";
+import React, { useState, useEffect } from "react";
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, Switch, Image, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../../theme";
 import { useProfileStore } from "../../../store/useProfileStore";
+import { supabase } from "../../../../utils/supabase";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { profile, clearProfile } = useProfileStore();
 
   // Settings State
@@ -15,6 +18,68 @@ export default function ProfileScreen() {
   const [pushEnabled, setPushEnabled] = useState(true);
   const [whatsappEnabled, setWhatsappEnabled] = useState(false);
   const [emailEnabled, setEmailEnabled] = useState(true);
+
+  // Dynamic DB States
+  const [duesAmount, setDuesAmount] = useState(0);
+  const [household, setHousehold] = useState<any[]>([]);
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchProfileData = async () => {
+    if (!profile?.id) return;
+    try {
+      setLoading(true);
+      // 1. Get flat_id to query dues
+      const { data: memberData } = await supabase
+        .from("societymembers")
+        .select("flat_id")
+        .eq("user_id", profile.id)
+        .maybeSingle();
+
+      if (memberData?.flat_id) {
+        const { data: invoices } = await supabase
+          .from("maintenance_invoices")
+          .select("amount")
+          .eq("flat_id", memberData.flat_id)
+          .eq("status", "Pending");
+
+        if (invoices) {
+          const sum = invoices.reduce((acc, curr) => acc + Number(curr.amount), 0);
+          setDuesAmount(sum);
+        }
+      }
+
+      // 2. Query household members
+      const { data: householdData } = await supabase
+        .from("household_members")
+        .select("*")
+        .eq("user_id", profile.id);
+
+      if (householdData) {
+        setHousehold(householdData);
+      }
+
+      // 3. Query vehicles
+      const { data: vehiclesData } = await supabase
+        .from("vehicles")
+        .select("*")
+        .eq("user_id", profile.id);
+
+      if (vehiclesData) {
+        setVehicles(vehiclesData);
+      }
+    } catch (err) {
+      console.error("Error loading profile DB data:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (profile?.id) {
+      fetchProfileData();
+    }
+  }, [profile?.id]);
 
   const handleLogout = async () => {
     Alert.alert("Sign Out", "Are you sure you want to log out?", [
@@ -31,15 +96,64 @@ export default function ProfileScreen() {
   };
 
   const handlePayBills = () => {
-    Alert.alert("Unit Balance", "Your unit balance is ₹0.00. No pending bills.");
+    router.push("/resident/(home)/dues" as any);
   };
 
   const handleAddVehicle = () => {
-    Alert.alert("Add Vehicle", "Enter vehicle registration details to link it to your unit.");
+    Alert.alert("Add Vehicle", "Enter vehicle details:", [
+      {
+        text: "Register Test Car",
+        onPress: async () => {
+          if (!profile?.id) return;
+          try {
+            const testNum = "MH-12-HC-" + Math.floor(1000 + Math.random() * 9000);
+            const { error } = await supabase
+              .from("vehicles")
+              .insert({
+                user_id: profile.id,
+                vehicle_name: "BMW X5",
+                vehicle_number: testNum,
+                vehicle_type: "Four Wheeler",
+              });
+
+            if (error) throw error;
+            Alert.alert("Success", `Vehicle registered: BMW X5 (${testNum})`);
+            fetchProfileData();
+          } catch (err: any) {
+            Alert.alert("Error", err.message || "Failed to register vehicle.");
+          }
+        }
+      },
+      { text: "Cancel", style: "cancel" }
+    ]);
   };
 
-  const handleEditHousehold = () => {
-    Alert.alert("Household Members", "Manage registered household members and their gate access permissions.");
+  const handleAddHousehold = () => {
+    Alert.alert("Add Member", "Register household family member:", [
+      {
+        text: "Add Test Family Member",
+        onPress: async () => {
+          if (!profile?.id) return;
+          try {
+            const { error } = await supabase
+              .from("household_members")
+              .insert({
+                user_id: profile.id,
+                full_name: "Priya Sharma",
+                phone: "+91 99998 88887",
+                relationship: "Spouse",
+              });
+
+            if (error) throw error;
+            Alert.alert("Success", "Registered प्रिया शर्मा as Spouse");
+            fetchProfileData();
+          } catch (err: any) {
+            Alert.alert("Error", err.message || "Failed to add member.");
+          }
+        }
+      },
+      { text: "Cancel", style: "cancel" }
+    ]);
   };
 
   const handleChangePassword = () => {
@@ -60,19 +174,16 @@ export default function ProfileScreen() {
       <StatusBar style="light" />
 
       {/* Top App Bar Header */}
-      <View style={styles.topAppBar}>
+      <View style={[styles.topAppBar, { paddingTop: insets.top }]}>
         <View style={styles.topAppBarLeft}>
           <TouchableOpacity style={styles.iconBtn}>
             <MaterialIcons name="grid-view" size={24} color={theme.colors.onSurfaceVariant} />
           </TouchableOpacity>
           <Text style={styles.appBarTitle}>Profile</Text>
         </View>
-        <View style={styles.avatarWrapper}>
-          <Image
-            source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuA098LF-ol4LdsX4aMYY46Xpyu71H9xcix3GoFyZXiKQspJJxepMnLc1r6Lge9noBJl8KAsJ4DH8T7DPKrpB4T41zGKZTm5IAZbL1mv18PcWu7IyGiekKXnWmFsXv-axJwBWAwKYAN4d0d1mbnh-wmmhULG8f6Y7wts2ZYoTd6TMbWQ8YOKuc4fPABimzFvAt4yyj90zCslyVXnEOTuT1ofu5MBN8LVB0Lm9_Xf_nX2-30oi8OLIjbB8g" }}
-            style={styles.avatar}
-          />
-        </View>
+        <TouchableOpacity style={styles.refreshBtn} onPress={fetchProfileData}>
+          <MaterialIcons name="refresh" size={22} color={theme.colors.primary} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
@@ -80,21 +191,25 @@ export default function ProfileScreen() {
         <View style={styles.profileHeaderCard}>
           <View style={styles.avatarContainer}>
             <Image
-              source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuDPk_kYVr9OpeCYJwBjs8_7FuBa9vVhs3InYCga1MKp8euClaL8UDlCemjOq1ru8WlOc80-wsDZqa5sCWJsZ7zhDFYtj_85TJtoxxfwECGit2kZ3VE3_6pmDS44diLb64wAIlv1TMwfgfzJZ3T3Hcytw41J9wf2MJhL-s7nOfqJb1NpmlDNAjAMhcf8S_UTdJaWrYqM-5Lga-S25-iJjHBfqn4ZElEOZ5hvp2kfmkBkM9zVn1ao2jL3mQ" }}
+              source={{ uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.fullName)}&background=0D9488&color=fff&size=100` }}
               style={styles.largeAvatar}
             />
-            <View style={styles.verifiedBadge}>
-              <MaterialIcons name="verified" size={14} color="#ffffff" />
-            </View>
+            {profile.isVerified && (
+              <View style={styles.verifiedBadge}>
+                <MaterialIcons name="verified" size={14} color="#ffffff" />
+              </View>
+            )}
           </View>
           <View style={styles.profileMainInfo}>
-            <Text style={styles.profileNameText}>Ananya Sharma</Text>
+            <Text style={styles.profileNameText}>{profile.fullName}</Text>
             <View style={styles.locationRow}>
               <MaterialIcons name="location-on" size={16} color={theme.colors.onSurfaceVariant} />
-              <Text style={styles.locationText}>Block C, Unit 402</Text>
+              <Text style={styles.locationText}>
+                {profile.towerName || "Block C"}, Unit {profile.flatName || "402"}
+              </Text>
             </View>
             <View style={styles.roleLabelWrapper}>
-              <Text style={styles.roleLabelText}>Resident Owner</Text>
+              <Text style={styles.roleLabelText}>{profile.role || "Resident"}</Text>
             </View>
           </View>
         </View>
@@ -118,7 +233,9 @@ export default function ProfileScreen() {
           <View style={styles.balanceCard}>
             <View>
               <Text style={styles.bentoLabelDark}>Unit Balance</Text>
-              <Text style={styles.bentoValueDark}>₹0.00</Text>
+              <Text style={styles.bentoValueDark}>
+                ₹{duesAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+              </Text>
             </View>
             <TouchableOpacity style={styles.payBillsBtn} onPress={handlePayBills}>
               <Text style={styles.payBillsText}>Pay Bills</Text>
@@ -134,20 +251,31 @@ export default function ProfileScreen() {
             <View style={styles.unitRow}>
               <View style={styles.rowLeftHeader}>
                 <MaterialIcons name="people" size={22} color={theme.colors.secondary} />
-                <Text style={styles.unitRowTitle}>Household Members</Text>
+                <Text style={styles.unitRowTitle}>Household Members ({household.length})</Text>
               </View>
-              <TouchableOpacity onPress={handleEditHousehold}>
-                <Text style={styles.actionBtnText}>Edit</Text>
+              <TouchableOpacity onPress={handleAddHousehold}>
+                <Text style={styles.actionBtnText}>Add</Text>
               </TouchableOpacity>
             </View>
             
-            <View style={styles.householdAvatarsRow}>
-              <Image source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuD_9aIFP4Ag1JWi9wN2MkYh0G1nHLYMx7rl_RnZmrvd-N3r55AfDTWF2RvX_35cJu89FchflleelVa5JqZ1Jgp4Cj_si1PcZTCzo_V6uEvpYk2lnNyeygmRLsOUHD-1Ay_5wGU-racEvJS958SrN9UBTsJ6LK_NElJStPNdews6JNO29pV62C4Tl0WnoeYGWixM3XCPoEfAUbTr-lRaPyL7PY_ZUaol_KbKZFNeZajOekjR-CBBITqqIw" }} style={styles.memberAvatar} />
-              <Image source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuAHnhIKZm8p7UFbp-hpO_IsPs3SPZvM6OXC5j_lhHk8YRn1zu-AR_rWF5cqfmhGOkj_TTO6SqqM0mK_x7tmI7hL9Hrj_0qK-ui1oxSDkQ2VOFlxE7keD0Ylt4XLE2jqa-3PRZkd39W64wK7mAJ-5MZtANha2FGwZEM-DNA6-2C9aF6hQc8KpSnq4S6N3bx_umu6lbmFNgO4IESQEKG5vhqYCgxTIrkDy1CPFunYg0aZTnEg5Kkf_NAmnQ" }} style={[styles.memberAvatar, { marginLeft: -12 }]} />
-              <View style={[styles.memberAvatarPlaceholder, { marginLeft: -12 }]}>
-                <Text style={styles.placeholderText}>+2</Text>
+            {household.length > 0 ? (
+              <View style={styles.householdList}>
+                {household.map((member) => (
+                  <View key={member.id} style={styles.memberCard}>
+                    <Image
+                      source={{ uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=random&color=fff&size=40` }}
+                      style={styles.memberAvatar}
+                    />
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={styles.memberNameText}>{member.full_name}</Text>
+                      <Text style={styles.memberRoleText}>{member.relationship} • {member.phone}</Text>
+                    </View>
+                  </View>
+                ))}
               </View>
-            </View>
+            ) : (
+              <Text style={styles.emptyText}>No registered household family members.</Text>
+            )}
 
             <View style={styles.divider} />
 
@@ -155,25 +283,33 @@ export default function ProfileScreen() {
             <View style={styles.unitRow}>
               <View style={styles.rowLeftHeader}>
                 <MaterialIcons name="directions-car" size={22} color={theme.colors.secondary} />
-                <Text style={styles.unitRowTitle}>Registered Vehicles</Text>
+                <Text style={styles.unitRowTitle}>Registered Vehicles ({vehicles.length})</Text>
               </View>
               <TouchableOpacity onPress={handleAddVehicle}>
                 <Text style={styles.actionBtnText}>Add</Text>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.vehicleCard}>
-              <View style={styles.vehicleDetails}>
-                <View style={styles.vehicleIconWrapper}>
-                  <MaterialIcons name="directions-car" size={20} color={theme.colors.secondary} />
-                </View>
-                <View>
-                  <Text style={styles.vehicleName}>Tesla Model 3</Text>
-                  <Text style={styles.vehicleNumber}>{profile.vehicleNumber || "MH-12-HC-2024"}</Text>
-                </View>
+            {vehicles.length > 0 ? (
+              <View style={styles.vehiclesList}>
+                {vehicles.map((v) => (
+                  <View key={v.id} style={styles.vehicleCard}>
+                    <View style={styles.vehicleDetails}>
+                      <View style={styles.vehicleIconWrapper}>
+                        <MaterialIcons name="directions-car" size={20} color={theme.colors.secondary} />
+                      </View>
+                      <View>
+                        <Text style={styles.vehicleName}>{v.vehicle_name}</Text>
+                        <Text style={styles.vehicleNumber}>{v.vehicle_number}</Text>
+                      </View>
+                    </View>
+                    <MaterialIcons name="verified" size={20} color={theme.colors.secondary} />
+                  </View>
+                ))}
               </View>
-              <MaterialIcons name="chevron-right" size={20} color={theme.colors.outline} />
-            </View>
+            ) : (
+              <Text style={styles.emptyText}>No registered vehicles.</Text>
+            )}
           </View>
         </View>
 
@@ -274,9 +410,6 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>EMERGENCY CONTACTS</Text>
-            <TouchableOpacity onPress={() => Alert.alert("Add Emergency Contact", "Request access to add custom emergency contact.")}>
-              <Text style={styles.actionBtnText}>Add</Text>
-            </TouchableOpacity>
           </View>
           <View style={styles.cardContainer}>
             <TouchableOpacity style={styles.emergencyCard} onPress={handleCallEmergency}>
@@ -368,6 +501,14 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1,
     borderColor: theme.colors.outlineVariant,
+  },
+  refreshBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: theme.colors.surfaceContainerLow,
   },
   avatar: {
     width: "100%",
@@ -741,5 +882,36 @@ const styles = StyleSheet.create({
     color: theme.colors.outlineVariant,
     textAlign: "center",
     paddingVertical: 16,
+  },
+  householdList: {
+    padding: theme.spacing.md,
+    gap: 12,
+  },
+  memberCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.surfaceContainerLow,
+    padding: 10,
+    borderRadius: 8,
+  },
+  memberNameText: {
+    ...theme.typography.button,
+    color: theme.colors.onSurface,
+    fontWeight: "700",
+  },
+  memberRoleText: {
+    ...theme.typography.labelMd,
+    color: theme.colors.onSurfaceVariant,
+    fontSize: 11,
+  },
+  vehiclesList: {
+    padding: theme.spacing.md,
+    gap: 10,
+  },
+  emptyText: {
+    ...theme.typography.bodyMd,
+    color: theme.colors.outline,
+    padding: theme.spacing.md,
+    textAlign: "center",
   },
 });

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, ImageBackground, Image } from "react-native";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -6,6 +6,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../../theme";
 import { useProfileStore } from "../../../store/useProfileStore";
 import { usePassesHistory } from "../../../hooks/useRequestPasses";
+import { supabase } from "../../../../utils/supabase";
 
 export default function ResidentDashboard() {
   const router = useRouter();
@@ -16,7 +17,59 @@ export default function ResidentDashboard() {
 
   // Live pending count
   const pendingPasses = historyList.filter(pass => pass.status === "Pending");
-  const activeCount = pendingPasses.length > 0 ? pendingPasses.length : 1; // Default to 1 matching mockup
+  const activeCount = pendingPasses.length;
+
+  const [duesAmount, setDuesAmount] = useState(0);
+  const [noticesCount, setNoticesCount] = useState(0);
+  const [guardsCount, setGuardsCount] = useState(0);
+
+  useEffect(() => {
+    if (!profile?.id || !profile?.societyId) return;
+
+    const loadDashboardStats = async () => {
+      try {
+        // 1. Get flat_id for the resident
+        const { data: memberData } = await supabase
+          .from("societymembers")
+          .select("flat_id")
+          .eq("user_id", profile.id)
+          .maybeSingle();
+
+        if (memberData?.flat_id) {
+          // Query pending dues
+          const { data: invoices } = await supabase
+            .from("maintenance_invoices")
+            .select("amount")
+            .eq("flat_id", memberData.flat_id)
+            .eq("status", "Pending");
+
+          if (invoices) {
+            const sum = invoices.reduce((acc, curr) => acc + Number(curr.amount), 0);
+            setDuesAmount(sum);
+          }
+        }
+
+        // 2. Query notices count
+        const { count: notices } = await supabase
+          .from("notices")
+          .select("*", { count: "exact", head: true })
+          .eq("society_id", profile.societyId);
+
+        setNoticesCount(notices || 0);
+
+        // 3. Query active guards
+        const { count: guards } = await supabase
+          .from("guard_assignments")
+          .select("*", { count: "exact", head: true });
+
+        setGuardsCount(guards || 0);
+      } catch (error) {
+        console.error("Error loading dashboard stats:", error);
+      }
+    };
+
+    loadDashboardStats();
+  }, [profile?.id, profile?.societyId]);
 
   const handleSignOut = async () => {
     Alert.alert("Sign Out", "Are you sure you want to log out?", [
@@ -122,8 +175,10 @@ export default function ResidentDashboard() {
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         {/* Welcome Section */}
         <View style={styles.welcomeSection}>
-          <Text style={styles.welcomeText}>Hello, Resident</Text>
-          <Text style={styles.unitText}>Block C, Unit 402 • Verified</Text>
+          <Text style={styles.welcomeText}>Hello, {profile.fullName}</Text>
+          <Text style={styles.unitText}>
+            {profile.towerName || "Block C"}, Unit {profile.flatName || "402"} • {profile.isVerified ? "Verified" : "Pending"}
+          </Text>
         </View>
 
         {/* Hero Status Cards - Bento Style */}
@@ -159,7 +214,7 @@ export default function ResidentDashboard() {
                 <MaterialIcons name="notifications" size={20} color={theme.colors.secondary} />
               </View>
               <Text style={styles.halfCardLabel}>Notices</Text>
-              <Text style={styles.halfCardValue}>2 New</Text>
+              <Text style={styles.halfCardValue}>{noticesCount} Active</Text>
             </TouchableOpacity>
 
             {/* Dues */}
@@ -168,7 +223,7 @@ export default function ResidentDashboard() {
                 <MaterialIcons name="account-balance-wallet" size={20} color={theme.colors.error} />
               </View>
               <Text style={styles.halfCardLabel}>Dues</Text>
-              <Text style={styles.halfCardValue}>₹4,500.00</Text>
+              <Text style={styles.halfCardValue}>₹{duesAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -254,7 +309,7 @@ export default function ResidentDashboard() {
           >
             <View style={styles.mapOverlay}>
               <View style={styles.mapBadge}>
-                <Text style={styles.mapBadgeText}>3 Active Guards</Text>
+                <Text style={styles.mapBadgeText}>{guardsCount} Active Guards</Text>
               </View>
               <View>
                 <Text style={styles.mapLabel}>Society Status</Text>

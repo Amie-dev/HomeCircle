@@ -1,36 +1,52 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, Alert, Image, Switch, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../../theme";
+import { useProfileStore } from "../../../store/useProfileStore";
+import { supabase } from "../../../../utils/supabase";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function RaiseComplaintScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { profile } = useProfileStore();
 
   // Form States
   const [category, setCategory] = useState<"Plumbing" | "Electrical" | "Security" | "Cleaning" | "Others">("Plumbing");
   const [description, setDescription] = useState("");
   const [urgent, setUrgent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadingTickets, setLoadingTickets] = useState(false);
 
   // Tickets List State
-  const [tickets, setTickets] = useState([
-    {
-      id: "HC-4829",
-      title: "Power Outage - Lobby",
-      category: "Electrical",
-      time: "Reported 2h ago",
-      status: "In Progress",
-    },
-    {
-      id: "HC-4711",
-      title: "Intercom Faulty",
-      category: "Security",
-      time: "Reported 3 days ago",
-      status: "Resolved",
+  const [tickets, setTickets] = useState<any[]>([]);
+
+  const fetchTickets = async () => {
+    if (!profile?.id) return;
+    try {
+      setLoadingTickets(true);
+      const { data, error } = await supabase
+        .from("tickets")
+        .select("*")
+        .eq("user_id", profile.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      if (data) setTickets(data);
+    } catch (err) {
+      console.error("Error loading tickets:", err);
+    } finally {
+      setLoadingTickets(false);
     }
-  ]);
+  };
+
+  useEffect(() => {
+    if (profile?.id) {
+      fetchTickets();
+    }
+  }, [profile?.id]);
 
   const categoryList: Array<"Plumbing" | "Electrical" | "Security" | "Cleaning" | "Others"> = [
     "Plumbing",
@@ -55,29 +71,41 @@ export default function RaiseComplaintScreen() {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!description.trim()) {
       Alert.alert("Error", "Please provide a description of the issue.");
       return;
     }
+    if (!profile?.id || !profile?.societyId) return;
 
     setIsSubmitting(true);
-    // Simulate submission
-    setTimeout(() => {
-      const newTicket = {
-        id: `HC-${Math.floor(1000 + Math.random() * 9000)}`,
-        title: `${category} Issue - ${description.substring(0, 15)}...`,
-        category: category,
-        time: "Reported Just now",
-        status: "In Progress",
-      };
-      setTickets([newTicket, ...tickets]);
-      setIsSubmitting(false);
+    try {
+      const { error } = await supabase
+        .from("tickets")
+        .insert({
+          user_id: profile.id,
+          society_id: profile.societyId,
+          title: `${category} Issue - ${description.substring(0, 15)}...`,
+          category: category,
+          description: description.trim(),
+          is_urgent: urgent,
+          status: "Pending",
+        });
+
+      if (error) throw error;
+
       setDescription("");
       setUrgent(false);
       Alert.alert("Success", "Your complaint ticket has been submitted successfully!");
-    }, 1500);
+      fetchTickets();
+    } catch (err: any) {
+      Alert.alert("Error submitting complaint", err.message || "Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
+  if (!profile) return null;
 
   return (
     <KeyboardAvoidingView
@@ -88,7 +116,7 @@ export default function RaiseComplaintScreen() {
         <StatusBar style="light" />
 
         {/* Top App Bar */}
-        <View style={styles.topAppBar}>
+        <View style={[styles.topAppBar, { paddingTop: insets.top }]}>
           <View style={styles.topAppBarLeft}>
             <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
               <MaterialIcons name="arrow-back" size={24} color={theme.colors.primary} />
@@ -97,7 +125,7 @@ export default function RaiseComplaintScreen() {
           </View>
           <View style={styles.avatarWrapper}>
             <Image
-              source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuArO9B-fwYDTwj9zTWlgpzRCxW_L3BzCKTQsjHCsKmKXBeq-0m6NMIdpW3OdHcgbiyIA1IHHbgCtTQpLO6jClxBcA1jsJHrpAHgrvS7NlIH6CNDnrAbZLm-4wjnzt52tjS3n8iatSqIqjjHpHyIfjMXy9FO-M8Yziwatcef8sL_a5i0kvjt9EYTcAeXs6-5KexhAW0fV96z4XqLkuSBj_pPxLa1RAQY7ap40TWoozA-LKAnAw7swnRMOg" }}
+              source={{ uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.fullName)}&background=0D9488&color=fff` }}
               style={styles.avatar}
             />
           </View>
@@ -153,7 +181,7 @@ export default function RaiseComplaintScreen() {
 
             {/* Urgent Toggle */}
             <View style={styles.toggleRow}>
-              <View>
+              <View style={styles.toggleTextContainer}>
                 <Text style={styles.toggleTitle}>Mark as Urgent</Text>
                 <Text style={styles.toggleDesc}>Flag this for immediate security attention.</Text>
               </View>
@@ -165,7 +193,7 @@ export default function RaiseComplaintScreen() {
               />
             </View>
 
-            {/* Image Upload Area */}
+            {/* Attach Photos Placeholder */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Attach Photos</Text>
               <View style={styles.uploadRow}>
@@ -174,17 +202,6 @@ export default function RaiseComplaintScreen() {
                   <MaterialIcons name="add-a-photo" size={24} color={theme.colors.onSurfaceVariant} />
                   <Text style={styles.uploadBtnText}>UPLOAD</Text>
                 </TouchableOpacity>
-
-                {/* Preview Placeholder */}
-                <View style={styles.previewCard}>
-                  <Image
-                    source={{ uri: "https://www.gstatic.com/labs-code/stitch/stitch-placeholder-300x300.svg" }}
-                    style={styles.previewImage}
-                  />
-                  <TouchableOpacity style={styles.closeBtn} onPress={() => Alert.alert("Removed", "Photo removed from attachment.")}>
-                    <MaterialIcons name="close" size={14} color="#ffffff" />
-                  </TouchableOpacity>
-                </View>
               </View>
             </View>
 
@@ -205,38 +222,44 @@ export default function RaiseComplaintScreen() {
           <View style={styles.recentSection}>
             <View style={styles.recentHeader}>
               <Text style={styles.recentTitle}>Recent Tickets</Text>
-              <TouchableOpacity onPress={() => Alert.alert("Tickets", "All historical tickets are up to date.")}>
-                <Text style={styles.viewAllText}>View All</Text>
+              <TouchableOpacity onPress={fetchTickets}>
+                <Text style={styles.viewAllText}>Refresh</Text>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.ticketsList}>
-              {tickets.map((t) => (
-                <TouchableOpacity
-                  key={t.id}
-                  style={styles.ticketCard}
-                  onPress={() => Alert.alert(t.title, `Ticket ID: ${t.id}\nCategory: ${t.category}\nStatus: ${t.status}`)}
-                >
-                  <View style={styles.ticketLeft}>
-                    <View style={styles.ticketIconBox}>
-                      <MaterialIcons name={getCategoryIcon(t.category)} size={22} color={theme.colors.secondary} />
+            {loadingTickets ? (
+              <ActivityIndicator size="small" color={theme.colors.secondary} style={{ padding: 20 }} />
+            ) : tickets.length > 0 ? (
+              <View style={styles.ticketsList}>
+                {tickets.map((t) => (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={styles.ticketCard}
+                    onPress={() => Alert.alert(t.title, `Ticket ID: ${t.id}\nCategory: ${t.category}\nStatus: ${t.status}\n\nDescription: ${t.description || "No description"}`)}
+                  >
+                    <View style={styles.ticketLeft}>
+                      <View style={styles.ticketIconBox}>
+                        <MaterialIcons name={getCategoryIcon(t.category)} size={22} color={theme.colors.secondary} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.ticketTitleText} numberOfLines={1}>{t.title}</Text>
+                        <Text style={styles.ticketDetails}>ID: {t.id.slice(0, 8)} • {new Date(t.created_at).toLocaleDateString("en-IN", { month: "short", day: "numeric" })}</Text>
+                      </View>
                     </View>
-                    <View>
-                      <Text style={styles.ticketTitleText}>{t.title}</Text>
-                      <Text style={styles.ticketDetails}>ID: {t.id} • {t.time}</Text>
+                    <View style={styles.ticketRight}>
+                      <View style={[styles.statusBadge, { backgroundColor: t.status === "Resolved" ? "rgba(0,106,97,0.1)" : "rgba(118,119,125,0.1)" }]}>
+                        <Text style={[styles.statusBadgeText, { color: t.status === "Resolved" ? theme.colors.secondary : theme.colors.outline }]}>
+                          {t.status}
+                        </Text>
+                      </View>
+                      <MaterialIcons name="chevron-right" size={20} color={theme.colors.outline} />
                     </View>
-                  </View>
-                  <View style={styles.ticketRight}>
-                    <View style={[styles.statusBadge, { backgroundColor: t.status === "Resolved" ? "rgba(0,106,97,0.1)" : "rgba(118,119,125,0.1)" }]}>
-                      <Text style={[styles.statusBadgeText, { color: t.status === "Resolved" ? theme.colors.secondary : theme.colors.outline }]}>
-                        {t.status}
-                      </Text>
-                    </View>
-                    <MaterialIcons name="chevron-right" size={20} color={theme.colors.outline} />
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.emptyText}>No complaints filed yet.</Text>
+            )}
           </View>
         </ScrollView>
 
@@ -528,5 +551,14 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
     zIndex: 40,
+  },
+  toggleTextContainer: {
+    flex: 1,
+  },
+  emptyText: {
+    ...theme.typography.bodyMd,
+    color: theme.colors.outline,
+    textAlign: "center",
+    padding: 20,
   },
 });

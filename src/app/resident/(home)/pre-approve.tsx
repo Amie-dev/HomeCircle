@@ -6,9 +6,11 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../../theme";
 import { useProfileStore } from "../../../store/useProfileStore";
 import { useCreatePass } from "../../../hooks/useRequestPasses";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function PreApproveGuestScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { profile } = useProfileStore();
   const createPass = useCreatePass();
 
@@ -83,6 +85,10 @@ export default function PreApproveGuestScreen() {
         phone: profile.phone,
         societyId: profile.societyId,
         societyName: "HomeCircle Society",
+        purpose: purpose.trim(),
+        vehicleNumber: vehicleNumber.trim(),
+        expectedArrival: expectedArrival.trim(),
+        isFrequent: frequent,
       },
     }, {
       onSuccess: () => {
@@ -115,7 +121,7 @@ export default function PreApproveGuestScreen() {
         <StatusBar style="light" />
 
         {/* Top App Bar Header */}
-        <View style={styles.topAppBar}>
+        <View style={[styles.topAppBar, { paddingTop: insets.top }]}>
           <View style={styles.topAppBarLeft}>
             <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
               <MaterialIcons name="arrow-back" size={24} color={theme.colors.primary} />
@@ -124,7 +130,7 @@ export default function PreApproveGuestScreen() {
           </View>
           <View style={styles.avatarWrapper}>
             <Image
-              source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuC8DwO5qaf9_aJmY1hVmPzppx2Bb0JMs0RpDfKcLXRtnvt8XQp9m6dZnGtn2SertHAwmEWoOuRQFNM0uPn3mFVwK1tZVKKT5_PsAHUiQDXEXeUkHxz24Il7L2XGX8VP-Uw_eW-o358PHQOBfFK3VeW2hH-KkiDegymZ-vH-TjyXF6-qo5dn8iael7pirpbPEDpL_QOQyfXSTZxk8XKg9NWETOx4vkqXSa0kfvm_u2e-XA_GmvOvlsV_Vw" }}
+              source={{ uri: profile ? `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.fullName)}&background=0D9488&color=fff` : "https://ui-avatars.com/api/?name=Guest" }}
               style={styles.avatar}
             />
           </View>

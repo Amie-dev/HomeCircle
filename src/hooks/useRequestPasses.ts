@@ -23,6 +23,7 @@ export interface VisitorPass {
     phone: string;
     societyId?: string;
     societyName?: string;
+    [key: string]: any;
   };
   created_at: string;
 }

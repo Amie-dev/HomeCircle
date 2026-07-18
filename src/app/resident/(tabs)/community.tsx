@@ -1,89 +1,233 @@
-import React, { useState } from "react";
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, Modal, TextInput, Linking, Image } from "react-native";
+import React, { useState, useEffect } from "react";
+import {
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Modal,
+  TextInput,
+  Linking,
+  Image,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../../theme";
 import { useProfileStore } from "../../../store/useProfileStore";
-
-interface Ticket {
-  id: string;
-  title: string;
-  category: string;
-  status: "In Progress" | "Resolved" | "Pending";
-  assignedTo?: string;
-  timestamp: string;
-  description?: string;
-}
+import { supabase } from "../../../../utils/supabase";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function CommunityHubScreen() {
+  const insets = useSafeAreaInsets();
   const { profile } = useProfileStore();
+
+  const [notices, setNotices] = useState<any[]>([]);
+  const [loadingNotices, setLoadingNotices] = useState(false);
+
+  // Polls State
+  const [polls, setPolls] = useState<any[]>([]);
   const [selectedPoll, setSelectedPoll] = useState<number | null>(null);
+  const [pollVotesCount, setPollVotesCount] = useState<Record<string, number>>({});
+  const [totalVotes, setTotalVotes] = useState(0);
+  const [loadingPolls, setLoadingPolls] = useState(false);
+
+  // Tickets / Helpdesk State
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [loadingTickets, setLoadingTickets] = useState(false);
   const [showNewTicketModal, setShowNewTicketModal] = useState(false);
   const [ticketTitle, setTicketTitle] = useState("");
-  const [ticketCategory, setTicketCategory] = useState("Plumbing");
+  const [ticketCategory, setTicketCategory] = useState<"Plumbing" | "Electrical" | "Security" | "Cleaning" | "Others">("Plumbing");
   const [ticketDescription, setTicketDescription] = useState("");
+  const [ticketUrgent, setTicketUrgent] = useState(false);
+  const [submittingTicket, setSubmittingTicket] = useState(false);
 
-  // Initial Ticket List State matching HTML exactly
-  const [tickets, setTickets] = useState<Ticket[]>([
-    {
-      id: "ticket-1",
-      title: "Leaking pipe in kitchen",
-      category: "Plumbing",
-      status: "In Progress",
-      assignedTo: "Ramesh (Plumber)",
-      timestamp: "Yesterday",
-      description: "Water is continuously dripping from the kitchen sink joint.",
-    },
-    {
-      id: "ticket-2",
-      title: "Balcony light fuse",
-      category: "Electrical",
-      status: "Resolved",
-      timestamp: "3 days ago",
-      description: "Main balcony bulb fused last night.",
-    },
-  ]);
+  const fetchNotices = async () => {
+    if (!profile?.societyId) return;
+    try {
+      setLoadingNotices(true);
+      const { data, error } = await supabase
+        .from("notices")
+        .select("*")
+        .eq("society_id", profile.societyId)
+        .order("created_at", { ascending: false });
 
-  // Poll votes calculations
-  const pollVotes = [
-    { name: "New Gym Equipment", baseVotes: 52 },
-    { name: "Kids Play Zone Extension", baseVotes: 38 },
-    { name: "EV Charging Points", baseVotes: 34 },
-  ];
-  
-  const totalVotes = pollVotes.reduce((sum, item) => sum + item.baseVotes, 0) + (selectedPoll !== null ? 1 : 0);
-
-  const getPercent = (index: number) => {
-    let votes = pollVotes[index].baseVotes;
-    if (selectedPoll === index) votes += 1;
-    return Math.round((votes / totalVotes) * 100) + "%";
+      if (error) throw error;
+      if (data) setNotices(data);
+    } catch (err) {
+      console.error("Error fetching notices:", err);
+    } finally {
+      setLoadingNotices(false);
+    }
   };
 
-  const handleCreateTicket = () => {
+  const fetchPolls = async () => {
+    if (!profile?.societyId || !profile?.id) return;
+    try {
+      setLoadingPolls(true);
+      const { data: pollsData, error: pollsErr } = await supabase
+        .from("polls")
+        .select("*")
+        .eq("society_id", profile.societyId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (pollsErr) throw pollsErr;
+
+      if (pollsData && pollsData.length > 0) {
+        const activePoll = pollsData[0];
+        setPolls(pollsData);
+
+        // Fetch all votes for this active poll
+        const { data: votesData, error: votesErr } = await supabase
+          .from("poll_votes")
+          .select("selected_option, user_id")
+          .eq("poll_id", activePoll.id);
+
+        if (votesErr) throw votesErr;
+
+        if (votesData) {
+          setTotalVotes(votesData.length);
+
+          const counts: Record<string, number> = {};
+          activePoll.options.forEach((opt: string) => {
+            counts[opt] = votesData.filter((v: any) => v.selected_option === opt).length;
+          });
+          setPollVotesCount(counts);
+
+          // Check if current user voted
+          const userVoteRecord = votesData.find((v: any) => v.user_id === profile.id);
+          if (userVoteRecord) {
+            const optIndex = activePoll.options.indexOf(userVoteRecord.selected_option);
+            setSelectedPoll(optIndex);
+          } else {
+            setSelectedPoll(null);
+          }
+        }
+      } else {
+        setPolls([]);
+        setTotalVotes(0);
+        setPollVotesCount({});
+        setSelectedPoll(null);
+      }
+    } catch (err) {
+      console.error("Error fetching polls:", err);
+    } finally {
+      setLoadingPolls(false);
+    }
+  };
+
+  const fetchTickets = async () => {
+    if (!profile?.id) return;
+    try {
+      setLoadingTickets(true);
+      const { data, error } = await supabase
+        .from("tickets")
+        .select("*")
+        .eq("user_id", profile.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      if (data) setTickets(data);
+    } catch (err) {
+      console.error("Error fetching tickets:", err);
+    } finally {
+      setLoadingTickets(false);
+    }
+  };
+
+  useEffect(() => {
+    if (profile?.id && profile?.societyId) {
+      fetchNotices();
+      fetchPolls();
+      fetchTickets();
+    }
+  }, [profile?.id, profile?.societyId]);
+
+  const handleVote = async (optionName: string, index: number) => {
+    if (selectedPoll !== null || !profile?.id || polls.length === 0) return;
+    const activePoll = polls[0];
+    try {
+      const { error } = await supabase
+        .from("poll_votes")
+        .insert({
+          poll_id: activePoll.id,
+          user_id: profile.id,
+          selected_option: optionName,
+        });
+
+      if (error) throw error;
+
+      setSelectedPoll(index);
+      Alert.alert("Success", "Your vote has been cast!");
+      fetchPolls();
+    } catch (err: any) {
+      Alert.alert("Vote Error", err.message || "Failed to submit vote.");
+    }
+  };
+
+  const handleCreateTicket = async () => {
     if (!ticketTitle.trim()) {
       Alert.alert("Error", "Please provide a title for the ticket.");
       return;
     }
+    if (!profile?.id || !profile?.societyId) return;
 
-    const newTicket: Ticket = {
-      id: `ticket-${Date.now()}`,
-      title: ticketTitle,
-      category: ticketCategory,
-      status: "Pending",
-      timestamp: "Just now",
-      description: ticketDescription,
+    setSubmittingTicket(true);
+    try {
+      const { error } = await supabase
+        .from("tickets")
+        .insert({
+          user_id: profile.id,
+          society_id: profile.societyId,
+          title: ticketTitle.trim(),
+          category: ticketCategory,
+          description: ticketDescription.trim(),
+          is_urgent: ticketUrgent,
+          status: "Pending",
+        });
+
+      if (error) throw error;
+
+      setShowNewTicketModal(false);
+      setTicketTitle("");
+      setTicketDescription("");
+      setTicketUrgent(false);
+      Alert.alert("Success", "Your helpdesk ticket has been raised successfully!");
+      fetchTickets();
+    } catch (err: any) {
+      Alert.alert("Error raising ticket", err.message || "Failed to raise ticket.");
+    } finally {
+      setSubmittingTicket(false);
+    }
+  };
+
+  const parseDescription = (desc: string) => {
+    const match = desc.match(/^\[(.*?)\]\s*(.*)$/);
+    if (match) {
+      return {
+        category: match[1],
+        content: match[2],
+      };
+    }
+    return {
+      category: "General",
+      content: desc,
     };
+  };
 
-    setTickets([newTicket, ...tickets]);
-    setShowNewTicketModal(false);
-    setTicketTitle("");
-    setTicketDescription("");
-    Alert.alert("Success", "Your helpdesk ticket has been raised successfully!");
+  const getPercent = (optionName: string) => {
+    if (totalVotes === 0) return "0%";
+    const votes = pollVotesCount[optionName] || 0;
+    return Math.round((votes / totalVotes) * 100) + "%";
   };
 
   const handleContactCall = (name: string, phone: string) => {
     Alert.alert("Call Contact", `Do you want to call ${name} (${phone})?`, [
-      { text: "Call", onPress: () => Linking.openURL(`tel:${phone}`) },
+      { text: "Call", onPress: () => Linking.openURL(`tel:${phone}`).catch(() => Alert.alert("Dialer unavailable")) },
       { text: "Cancel", style: "cancel" },
     ]);
   };
@@ -95,19 +239,16 @@ export default function CommunityHubScreen() {
       <StatusBar style="light" />
 
       {/* Top App Bar Header */}
-      <View style={styles.topAppBar}>
+      <View style={[styles.topAppBar, { paddingTop: insets.top }]}>
         <View style={styles.topAppBarLeft}>
           <TouchableOpacity style={styles.iconBtn}>
             <MaterialIcons name="grid-view" size={24} color={theme.colors.onSurfaceVariant} />
           </TouchableOpacity>
-          <Text style={styles.appBarTitle}>HomeCircle</Text>
+          <Text style={styles.appBarTitle}>Community Hub</Text>
         </View>
-        <View style={styles.avatarWrapper}>
-          <Image
-            source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuAuoYt8stAwlVQvpeWjUX1OksE2yqiWgL_u-Cc0DRgng_1YPs7h7aUCNv-y3seSsSkyRZXDO0r7WtmXGMbPo4ValoBVqImj2XUGAdxjs2v37vyrNa0N8ERZ26wNGp4aNU7aIT15xDlzk2VK5ew9k_Gy0ajnVqwTmDPa2dHjWD2NH5bk9SjVsUb7pkviQU2RPLxNkMxn224ydfEGfKeroV6xYYHAxTWJjkByYx4nOFwKE8EvSt35WnJKVA" }}
-            style={styles.avatar}
-          />
-        </View>
+        <TouchableOpacity style={styles.refreshBtn} onPress={() => { fetchNotices(); fetchPolls(); fetchTickets(); }}>
+          <MaterialIcons name="refresh" size={22} color={theme.colors.primary} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
@@ -118,254 +259,281 @@ export default function CommunityHubScreen() {
               <Text style={styles.sectionTitle}>Notices</Text>
               <Text style={styles.sectionSubtitle}>Stay updated with society news</Text>
             </View>
-            <TouchableOpacity onPress={() => Alert.alert("Notices", "You are up to date.")}>
-              <View style={styles.viewAllBtn}>
-                <Text style={styles.viewAllText}>View All</Text>
-                <MaterialIcons name="chevron-right" size={16} color={theme.colors.secondary} />
-              </View>
-            </TouchableOpacity>
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.noticeList}>
-            {/* Notice Card 1 */}
-            <View style={styles.noticeCard}>
-              <View style={styles.urgentBadge}>
-                <Text style={styles.urgentBadgeText}>URGENT</Text>
-              </View>
-              <View style={styles.noticeCardHeader}>
-                <View style={[styles.noticeIconBox, { backgroundColor: "rgba(19, 27, 46, 0.1)" }]}>
-                  <MaterialIcons name="water-drop" size={20} color={theme.colors.primary} />
-                </View>
-                <View>
-                  <Text style={styles.noticeDate}>TODAY, 10:00 AM</Text>
-                  <Text style={styles.noticeTitle}>Water Maintenance</Text>
-                </View>
-              </View>
-              <Text style={styles.noticeDesc}>Water supply will be suspended for 2 hours in Block C for tank cleaning.</Text>
-              <TouchableOpacity style={styles.noticeActionBtn} onPress={() => Alert.alert("Notice Details", "Tank cleaning scheduled from 10:00 AM to 12:00 PM. Please store enough water.")}>
-                <Text style={styles.noticeActionText}>Read Details</Text>
-              </TouchableOpacity>
+          {loadingNotices ? (
+            <ActivityIndicator size="small" color={theme.colors.secondary} style={{ padding: 20 }} />
+          ) : notices.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.noticeList}>
+              {notices.map((n) => {
+                const parsed = parseDescription(n.description);
+                const isUrgent = n.category === "Urgent";
+                return (
+                  <View key={n.id} style={styles.noticeCard}>
+                    {isUrgent && (
+                      <View style={styles.urgentBadge}>
+                        <Text style={styles.urgentBadgeText}>URGENT</Text>
+                      </View>
+                    )}
+                    <View style={styles.noticeCardHeader}>
+                      <View style={[styles.noticeIconBox, { backgroundColor: isUrgent ? "rgba(186, 26, 26, 0.1)" : "rgba(0, 106, 97, 0.1)" }]}>
+                        <MaterialIcons name={isUrgent ? "error" : "campaign"} size={20} color={isUrgent ? theme.colors.error : theme.colors.secondary} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.noticeDate}>
+                          {new Date(n.created_at).toLocaleDateString("en-IN", { month: "short", day: "numeric" }).toUpperCase()}
+                        </Text>
+                        <Text style={styles.noticeTitle} numberOfLines={1}>{n.title}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.noticeDesc} numberOfLines={2}>{parsed.content}</Text>
+                    <TouchableOpacity style={styles.noticeActionBtn} onPress={() => Alert.alert(n.title, parsed.content)}>
+                      <Text style={styles.noticeActionText}>Read Details</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          ) : (
+            <View style={styles.emptyAnnouncements}>
+              <MaterialIcons name="campaign" size={32} color={theme.colors.outline} />
+              <Text style={styles.emptyAnnouncementsText}>No announcements posted recently.</Text>
             </View>
-
-            {/* Notice Card 2 */}
-            <View style={styles.noticeCard}>
-              <View style={styles.noticeCardHeader}>
-                <View style={[styles.noticeIconBox, { backgroundColor: "rgba(0, 106, 97, 0.1)" }]}>
-                  <MaterialIcons name="celebration" size={20} color={theme.colors.secondary} />
-                </View>
-                <View>
-                  <Text style={styles.noticeDate}>26 JAN</Text>
-                  <Text style={styles.noticeTitle}>Republic Day</Text>
-                </View>
-              </View>
-              <Text style={styles.noticeDesc}>Join us for the flag hoisting ceremony at the main clubhouse garden.</Text>
-              <TouchableOpacity style={styles.noticeActionBtn} onPress={() => Alert.alert("Success", "Attendance registered. Thank you!")}>
-                <Text style={styles.noticeActionText}>Register Attendance</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
+          )}
         </View>
 
         {/* Community Polls Section */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { marginBottom: 12 }]}>Community Polls</Text>
-          <View style={styles.pollContainer}>
-            <View style={styles.pollHeader}>
-              <View style={{ flex: 1 }}>
-                <View style={styles.activePollBadge}>
-                  <Text style={styles.activePollText}>Active Poll</Text>
+          {loadingPolls ? (
+            <ActivityIndicator size="small" color={theme.colors.secondary} style={{ padding: 20 }} />
+          ) : polls.length > 0 ? (
+            <View style={styles.pollContainer}>
+              <View style={styles.pollHeader}>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.activePollBadge}>
+                    <Text style={styles.activePollText}>Active Poll</Text>
+                  </View>
+                  <Text style={styles.pollQuestion}>{polls[0].question}</Text>
                 </View>
-                <Text style={styles.pollQuestion}>Proposed New Facilities?</Text>
-                <Text style={styles.pollSubtext}>Vote for the upgrade you want most in FY24.</Text>
+                <View style={styles.votesCounterWrapper}>
+                  <Text style={styles.votesCount}>{totalVotes}</Text>
+                  <Text style={styles.votesLabel}>Votes</Text>
+                </View>
               </View>
-              <View style={styles.votesCounterWrapper}>
-                <Text style={styles.votesCount}>{totalVotes}</Text>
-                <Text style={styles.votesLabel}>Votes</Text>
-              </View>
-            </View>
 
-            <View style={styles.pollOptions}>
-              {pollVotes.map((item, index) => {
-                const percentage = getPercent(index);
-                const isSelected = selectedPoll === index;
-                const hasVoted = selectedPoll !== null;
+              <View style={styles.pollOptions}>
+                {polls[0].options.map((opt: string, index: number) => {
+                  const percentage = getPercent(opt);
+                  const isSelected = selectedPoll === index;
+                  const hasVoted = selectedPoll !== null;
 
-                return (
-                  <TouchableOpacity
-                    key={index}
-                    disabled={hasVoted}
-                    style={[styles.pollOptionBtn, isSelected && styles.pollOptionBtnSelected]}
-                    onPress={() => setSelectedPoll(index)}
-                  >
-                    {/* Fill Bar behind content */}
-                    {hasVoted && (
-                      <View style={[styles.pollFillBar, { width: percentage as any }]} />
-                    )}
-                    <View style={styles.pollOptionContent}>
-                      <Text style={[styles.pollOptionText, isSelected && styles.pollOptionTextSelected]}>{item.name}</Text>
+                  return (
+                    <TouchableOpacity
+                      key={opt}
+                      disabled={hasVoted}
+                      style={[styles.pollOptionBtn, isSelected && styles.pollOptionBtnSelected]}
+                      onPress={() => handleVote(opt, index)}
+                      activeOpacity={0.8}
+                    >
+                      {/* Fill Bar behind content */}
                       {hasVoted && (
-                        <Text style={styles.pollPercentText}>{percentage}</Text>
+                        <View style={[styles.pollFillBar, { width: percentage as any }]} />
                       )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+                      <View style={styles.pollOptionContent}>
+                        <Text style={[styles.pollOptionText, isSelected && styles.pollOptionTextSelected]}>{opt}</Text>
+                        {hasVoted && (
+                          <Text style={styles.pollPercentText}>{percentage}</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={styles.pollFooterText}>
+                {new Date(polls[0].expires_at).getTime() < Date.now() ? "Poll Closed" : "Active"} • Verified Residents Only
+              </Text>
             </View>
-            <Text style={styles.pollFooterText}>Ending in 2 days • Verified Residents Only</Text>
-          </View>
+          ) : (
+            <View style={styles.emptyAnnouncements}>
+              <MaterialIcons name="poll" size={32} color={theme.colors.outline} />
+              <Text style={styles.emptyAnnouncementsText}>No active community polls.</Text>
+            </View>
+          )}
         </View>
 
         {/* Tickets / Helpdesk Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Your Tickets</Text>
+            <Text style={styles.sectionTitle}>Your Helpdesk Tickets</Text>
             <TouchableOpacity onPress={() => setShowNewTicketModal(true)}>
               <Text style={styles.newTicketText}>New Ticket</Text>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.ticketList}>
-            {tickets.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.ticketCard}
-                onPress={() => Alert.alert(item.title, `${item.category} Helpdesk Ticket\nStatus: ${item.status}\n\nDescription: ${item.description || "No further details"}`)}
-              >
-                <View style={styles.ticketIconBox}>
-                  <MaterialIcons
-                    name={item.category === "Plumbing" ? "plumbing" : "lightbulb"}
-                    size={22}
-                    color={theme.colors.onSurfaceVariant}
-                  />
-                </View>
-                <View style={styles.ticketInfo}>
-                  <View style={styles.ticketTitleRow}>
-                    <Text style={styles.ticketTitleText}>{item.title}</Text>
-                    <View style={[styles.ticketBadge, item.status === "Resolved" ? styles.statusResolved : item.status === "In Progress" ? styles.statusProgress : styles.statusPending]}>
-                      <Text style={[styles.ticketBadgeText, item.status === "Resolved" ? styles.textResolved : item.status === "In Progress" ? styles.textProgress : styles.textPending]}>
-                        {item.status}
+          {loadingTickets ? (
+            <ActivityIndicator size="small" color={theme.colors.secondary} style={{ padding: 20 }} />
+          ) : tickets.length > 0 ? (
+            <View style={styles.ticketList}>
+              {tickets.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.ticketCard}
+                  onPress={() => Alert.alert(item.title, `${item.category} Ticket\nStatus: ${item.status}\n\nDescription: ${item.description || "No further details"}`)}
+                >
+                  <View style={styles.ticketIconBox}>
+                    <MaterialIcons
+                      name={item.category === "Plumbing" ? "plumbing" : "build"}
+                      size={20}
+                      color={theme.colors.onSurfaceVariant}
+                    />
+                  </View>
+                  <View style={styles.ticketInfo}>
+                    <View style={styles.ticketTitleRow}>
+                      <Text style={styles.ticketTitleText} numberOfLines={1}>{item.title}</Text>
+                      <View style={[styles.ticketBadge, item.status === "Resolved" ? styles.statusResolved : item.status === "In Progress" ? styles.statusProgress : styles.statusPending]}>
+                        <Text style={[styles.ticketBadgeText, item.status === "Resolved" ? styles.textResolved : item.status === "In Progress" ? styles.textProgress : styles.textPending]}>
+                          {item.status}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.ticketBottomRow}>
+                      <Text style={styles.ticketAssigned}>
+                        {item.assigned_to ? `Assigned to: ${item.assigned_to}` : "Awaiting assignment"}
+                      </Text>
+                      <Text style={styles.ticketTime}>
+                        {new Date(item.created_at).toLocaleDateString("en-IN", { month: "short", day: "numeric" })}
                       </Text>
                     </View>
                   </View>
-                  <View style={styles.ticketBottomRow}>
-                    <Text style={styles.ticketAssigned}>
-                      {item.assignedTo ? `Assigned to: ${item.assignedTo}` : "Awaiting assignment"}
-                    </Text>
-                    <Text style={styles.ticketTime}>{item.timestamp}</Text>
-                  </View>
-                </View>
-                <MaterialIcons name="chevron-right" size={20} color={theme.colors.outline} />
-              </TouchableOpacity>
-            ))}
-          </View>
+                  <MaterialIcons name="chevron-right" size={20} color={theme.colors.outline} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyAnnouncements}>
+              <MaterialIcons name="build" size={32} color={theme.colors.outline} />
+              <Text style={styles.emptyAnnouncementsText}>You haven't raised any support tickets.</Text>
+            </View>
+          )}
         </View>
 
         {/* Quick Contact Section */}
         <View style={[styles.section, { marginBottom: 32 }]}>
           <Text style={[styles.sectionTitle, { marginBottom: 12 }]}>Quick Contact</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.contactsList}>
-            {/* Contact 1 */}
             <TouchableOpacity style={styles.contactItem} onPress={() => handleContactCall("Manager", "+91 98765 43210")}>
               <View style={[styles.contactAvatarBorder, { borderColor: theme.colors.secondary }]}>
                 <Image
-                  source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuDokOptZGgsAP-T0MwcRoMG8oak-P1Uqn--I_tu43xxwmWrdn0fzKDYIyD3vwq9_hiJoApMQtyBk4oYkm6Yj_6S-zQbcRL6lcVK58IM-MTb1fAswoE5mzcBlvZqIWQrDmhws-iJp4dg9mCDDv4-j_W61sT1HHHtyOvRE8rG8rEm0JTbPkXpEdfrVxZEZ_LnWsIg-56_DD3K9e1P5rImztMy65bzXpPixfX2WTlqZNBWt5ZtavCq6SG2iw" }}
+                  source={{ uri: "https://ui-avatars.com/api/?name=Manager&background=0D9488&color=fff" }}
                   style={styles.contactAvatar}
                 />
               </View>
               <Text style={styles.contactLabel}>Manager</Text>
             </TouchableOpacity>
 
-            {/* Contact 2 */}
-            <TouchableOpacity style={styles.contactItem} onPress={() => handleContactCall("Main Gate", "+91 99999 88888")}>
+            <TouchableOpacity style={styles.contactItem} onPress={() => handleContactCall("Main Gate Security", "+91 99999 88888")}>
               <View style={styles.contactAvatarBorder}>
                 <Image
-                  source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuBbLdi0owwBoA7lU-aZN5MxQh-tf_e2awhb5qLfUlfpgpnT-9SAg6DRgUSfVDJjyahHIiQyoZznys1pODbblmNAz7Ni3BRL-lgVzmvTOVBzOuXElrWIFqqmEiNh_j7uhVgy6a8jYvL6kYqnqe_M4Bw7EyGq2U46nTr9qYjbJJpurQ8hhT1GEHHj2IBmGrnHwsJMA9rDFSv6srU5QfeCcPkD5oXupb-3W0tIyYsqA1pZCm6T2XqrlbMWRQ" }}
+                  source={{ uri: "https://ui-avatars.com/api/?name=Security&background=0F172A&color=fff" }}
                   style={styles.contactAvatar}
                 />
               </View>
               <Text style={styles.contactLabel}>Main Gate</Text>
             </TouchableOpacity>
 
-            {/* Contact 3 */}
-            <TouchableOpacity style={styles.contactItem} onPress={() => handleContactCall("Electrician", "+91 91234 56789")}>
+            <TouchableOpacity style={styles.contactItem} onPress={() => handleContactCall("Duty Electrician", "+91 91234 56789")}>
               <View style={styles.contactAvatarBorder}>
                 <Image
-                  source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuBobLAwUzZpGx4i3_KFFDiJpuEask7JzMKJF_S84Mz7hgUYFT-AQ1XI_FM8lw8qK2u3ZDEZWmMF7TY0svBUS2VxZRYJWvNK4uLPpVzT6BXW5E2g9umAyi6BLCbVVr60scz7wo5p-b-6YbAsVS7t-lCFfoCIm-md_wMBYUQXQLk2I5gOayP2znOo4gkEX3hcD5qwNGZDU3LeGBItIforIc5u4Zp1fJiXWlHRw4sfif2dpJVvgldhYiEmcA" }}
+                  source={{ uri: "https://ui-avatars.com/api/?name=Electrician&background=86F2E4&color=000" }}
                   style={styles.contactAvatar}
                 />
               </View>
               <Text style={styles.contactLabel}>Electrician</Text>
             </TouchableOpacity>
-
-            {/* Contact 4 */}
-            <TouchableOpacity style={styles.contactItem} onPress={() => handleContactCall("Treasurer", "+91 93456 78901")}>
-              <View style={styles.contactAvatarBorder}>
-                <Image
-                  source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuBcQfVyMTu0kiFgwUvy55RkcOjt-MpMqTj5MzECxoeTxqti5lSwPgmQn0x6LjxFNtcT5jPFxeHhM7MI7FlrhuNqygGvmMw3a_M2rHEjvhHc--hUgrVbUiuoydcsSewY2rwqIdtlRSNBxjSfhJB1dNwYiNGOpdloV2LNGbgB2lyFiPjt2thwnnz7ychbZJm4eyjrPvbCJXSKzOWoDdQ5NP60Qb7c1K9O03B06QEaS2fBXkHEuBwILSkf4Q" }}
-                  style={styles.contactAvatar}
-                />
-              </View>
-              <Text style={styles.contactLabel}>Treasurer</Text>
-            </TouchableOpacity>
           </ScrollView>
         </View>
       </ScrollView>
 
-      {/* FAB */}
-      <TouchableOpacity style={styles.fab} onPress={() => setShowNewTicketModal(true)}>
-        <MaterialIcons name="add-comment" size={26} color="#ffffff" />
-      </TouchableOpacity>
-
-      {/* Create Ticket Modal */}
+      {/* New Ticket Modal */}
       <Modal visible={showNewTicketModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.modalContent}
+          >
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Raise Helpdesk Ticket</Text>
+              <Text style={styles.modalTitle}>Raise Support Ticket</Text>
               <TouchableOpacity onPress={() => setShowNewTicketModal(false)}>
-                <MaterialIcons name="close" size={24} color={theme.colors.outline} />
+                <MaterialIcons name="close" size={24} color={theme.colors.primary} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={styles.modalForm}>
-              <Text style={styles.label}>Ticket Title</Text>
+            <ScrollView contentContainerStyle={styles.formScroll} showsVerticalScrollIndicator={false}>
+              <Text style={styles.label}>Ticket Title *</Text>
               <TextInput
-                placeholder="e.g. Broken corridor lamp"
+                style={styles.inputField}
+                placeholder="Brief summary (e.g., Balcony light fused)"
                 value={ticketTitle}
                 onChangeText={setTicketTitle}
-                style={styles.textInput}
+                placeholderTextColor={theme.colors.outline}
               />
 
               <Text style={styles.label}>Category</Text>
-              <View style={styles.categoryRow}>
-                {["Plumbing", "Electrical", "Security", "Others"].map((cat) => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[styles.categoryBtn, ticketCategory === cat && styles.categoryBtnActive]}
-                    onPress={() => setTicketCategory(cat)}
-                  >
-                    <Text style={[styles.categoryBtnText, ticketCategory === cat && styles.categoryBtnTextActive]}>
-                      {cat}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+              <View style={styles.categoryGrid}>
+                {["Plumbing", "Electrical", "Security", "Cleaning", "Others"].map((cat: any) => {
+                  const selected = ticketCategory === cat;
+                  return (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[styles.categoryBtn, selected && styles.categoryBtnActive]}
+                      onPress={() => setTicketCategory(cat)}
+                    >
+                      <Text style={[styles.categoryBtnText, selected && styles.categoryBtnTextActive]}>
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
-              <Text style={styles.label}>Description</Text>
+              <Text style={styles.label}>Detailed Description</Text>
               <TextInput
-                placeholder="Describe the issue in detail..."
-                value={ticketDescription}
-                onChangeText={setTicketDescription}
+                style={styles.textInputArea}
+                placeholder="Explain the issue in detail"
                 multiline
                 numberOfLines={4}
-                style={[styles.textInput, { height: 100, textAlignVertical: "top" }]}
+                value={ticketDescription}
+                onChangeText={setTicketDescription}
+                placeholderTextColor={theme.colors.outline}
               />
 
-              <TouchableOpacity style={styles.submitBtn} onPress={handleCreateTicket}>
-                <Text style={styles.submitBtnText}>Submit Ticket</Text>
-              </TouchableOpacity>
+              <View style={styles.urgentRow}>
+                <View>
+                  <Text style={styles.urgentTitle}>Mark as Urgent</Text>
+                  <Text style={styles.urgentDesc}>Check if this requires immediate attention.</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.checkbox, ticketUrgent && styles.checkboxChecked]}
+                  onPress={() => setTicketUrgent(!ticketUrgent)}
+                >
+                  {ticketUrgent && <MaterialIcons name="check" size={16} color="#fff" />}
+                </TouchableOpacity>
+              </View>
+
+              {submittingTicket ? (
+                <ActivityIndicator size="small" color={theme.colors.secondary} style={{ marginTop: 24 }} />
+              ) : (
+                <TouchableOpacity
+                  style={styles.submitBtn}
+                  onPress={handleCreateTicket}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.submitBtnText}>Submit Ticket</Text>
+                </TouchableOpacity>
+              )}
             </ScrollView>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </View>
@@ -378,17 +546,12 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   topAppBar: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
     height: 80,
-    paddingTop: 32,
-    backgroundColor: theme.colors.surface,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: theme.spacing.containerMarginMobile,
+    backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(198, 198, 205, 0.2)",
     zIndex: 50,
@@ -406,22 +569,18 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontWeight: "700",
   },
-  avatarWrapper: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: theme.colors.outlineVariant,
-  },
-  avatar: {
-    width: "100%",
-    height: "100%",
+  refreshBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: theme.colors.surfaceContainerLow,
   },
   scrollContainer: {
     paddingHorizontal: theme.spacing.containerMarginMobile,
-    paddingTop: 96,
-    paddingBottom: 100,
+    paddingTop: theme.spacing.md,
+    paddingBottom: 40,
     gap: theme.spacing.lg,
   },
   section: {
@@ -431,17 +590,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
-    marginBottom: 4,
-  },
-  sectionHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  newTicketText: {
-    ...theme.typography.button,
-    color: theme.colors.secondary,
   },
   sectionTitle: {
     ...theme.typography.headlineMd,
@@ -449,31 +597,24 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   sectionSubtitle: {
-    ...theme.typography.bodyMd,
-    color: theme.colors.outline,
+    ...theme.typography.labelMd,
+    color: theme.colors.onSurfaceVariant,
+    fontSize: 11,
     marginTop: 2,
   },
-  viewAllBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  viewAllText: {
-    ...theme.typography.labelMd,
-    color: theme.colors.secondary,
-  },
   noticeList: {
-    gap: theme.spacing.md,
-    paddingBottom: 4,
+    gap: 14,
+    paddingVertical: 4,
   },
   noticeCard: {
-    width: 280,
+    width: 260,
     backgroundColor: theme.colors.surfaceContainerLowest,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: theme.colors.outlineVariant,
-    padding: theme.spacing.md,
-    borderRadius: 16,
-    gap: 12,
+    padding: 16,
     position: "relative",
+    overflow: "hidden",
   },
   urgentBadge: {
     position: "absolute",
@@ -482,64 +623,73 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.errorContainer,
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 8,
+    borderRadius: 4,
   },
   urgentBadgeText: {
     ...theme.typography.labelMd,
-    fontSize: 9,
-    color: theme.colors.onErrorContainer,
-    fontWeight: "700",
+    fontSize: 8,
+    color: theme.colors.error,
+    fontWeight: "800",
   },
   noticeCardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing.md,
+    gap: 10,
+    marginBottom: 8,
   },
   noticeIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     justifyContent: "center",
     alignItems: "center",
   },
   noticeDate: {
     ...theme.typography.labelMd,
+    fontSize: 8,
     color: theme.colors.outline,
-    fontSize: 10,
+    fontWeight: "700",
   },
   noticeTitle: {
     ...theme.typography.button,
-    color: theme.colors.primary,
     fontWeight: "700",
-    marginTop: 2,
+    color: theme.colors.primary,
   },
   noticeDesc: {
     ...theme.typography.bodyMd,
     color: theme.colors.onSurfaceVariant,
+    fontSize: 12,
     lineHeight: 18,
+    marginBottom: 10,
   },
   noticeActionBtn: {
-    width: "100%",
-    backgroundColor: theme.colors.surfaceContainerHigh,
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: "center",
+    alignSelf: "flex-start",
   },
   noticeActionText: {
-    ...theme.typography.button,
-    color: theme.colors.primary,
+    ...theme.typography.labelMd,
+    color: theme.colors.secondary,
+    fontWeight: "700",
   },
-  pollContainer: {
+  emptyAnnouncements: {
+    padding: 24,
     backgroundColor: theme.colors.surfaceContainerLowest,
     borderWidth: 1,
     borderColor: theme.colors.outlineVariant,
-    padding: theme.spacing.md,
     borderRadius: 16,
+    alignItems: "center",
+    gap: 6,
+  },
+  emptyAnnouncementsText: {
+    ...theme.typography.bodyMd,
+    color: theme.colors.outline,
+  },
+  pollContainer: {
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    padding: 16,
     gap: 16,
-    shadowColor: "rgba(15, 23, 42, 0.04)",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
   },
   pollHeader: {
     flexDirection: "row",
@@ -547,88 +697,98 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   activePollBadge: {
-    backgroundColor: "rgba(0, 106, 97, 0.1)",
+    backgroundColor: "rgba(0, 106, 97, 0.08)",
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 6,
+    borderRadius: 4,
     alignSelf: "flex-start",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   activePollText: {
     ...theme.typography.labelMd,
-    fontSize: 10,
+    fontSize: 9,
     color: theme.colors.secondary,
     fontWeight: "700",
   },
   pollQuestion: {
     ...theme.typography.headlineMd,
+    fontSize: 16,
     color: theme.colors.primary,
     fontWeight: "700",
-  },
-  pollSubtext: {
-    ...theme.typography.bodyMd,
-    color: theme.colors.onSurfaceVariant,
-    marginTop: 2,
   },
   votesCounterWrapper: {
-    alignItems: "flex-end",
+    alignItems: "center",
+    backgroundColor: theme.colors.surfaceContainerLow,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
   votesCount: {
-    ...theme.typography.headlineMd,
+    ...theme.typography.button,
+    fontWeight: "800",
     color: theme.colors.primary,
-    fontWeight: "700",
   },
   votesLabel: {
     ...theme.typography.labelMd,
-    color: theme.colors.onSurfaceVariant,
+    fontSize: 8,
+    color: theme.colors.outline,
   },
   pollOptions: {
     gap: 10,
   },
   pollOptionBtn: {
-    width: "100%",
+    height: 48,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: theme.colors.outlineVariant,
-    borderRadius: 8,
-    height: 48,
     justifyContent: "center",
-    position: "relative",
+    paddingHorizontal: 16,
+    backgroundColor: "#ffffff",
     overflow: "hidden",
+    position: "relative",
   },
   pollOptionBtnSelected: {
     borderColor: theme.colors.secondary,
   },
   pollFillBar: {
     position: "absolute",
-    top: 0,
     left: 0,
-    height: "100%",
-    backgroundColor: "rgba(0, 106, 97, 0.08)",
+    top: 0,
+    bottom: 0,
+    backgroundColor: "rgba(134, 242, 228, 0.18)",
   },
   pollOptionContent: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: theme.spacing.md,
     zIndex: 2,
   },
   pollOptionText: {
-    ...theme.typography.bodyLg,
-    fontSize: 14,
-    color: theme.colors.onSurface,
+    ...theme.typography.button,
+    color: theme.colors.primary,
   },
   pollOptionTextSelected: {
     color: theme.colors.secondary,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   pollPercentText: {
-    ...theme.typography.labelMd,
+    ...theme.typography.button,
+    fontWeight: "700",
     color: theme.colors.secondary,
   },
   pollFooterText: {
     ...theme.typography.labelMd,
+    fontSize: 10,
     color: theme.colors.outline,
-    textAlign: "center",
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  newTicketText: {
+    ...theme.typography.button,
+    color: theme.colors.secondary,
   },
   ticketList: {
     gap: 12,
@@ -639,21 +799,21 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surfaceContainerLowest,
     borderWidth: 1,
     borderColor: theme.colors.outlineVariant,
-    padding: theme.spacing.md,
     borderRadius: 16,
+    padding: 14,
+    gap: 12,
   },
   ticketIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.colors.background,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: theme.colors.surfaceContainerLow,
     justifyContent: "center",
     alignItems: "center",
-    marginRight: theme.spacing.md,
   },
   ticketInfo: {
     flex: 1,
-    gap: 4,
+    gap: 2,
   },
   ticketTitleRow: {
     flexDirection: "row",
@@ -662,38 +822,38 @@ const styles = StyleSheet.create({
   },
   ticketTitleText: {
     ...theme.typography.button,
-    color: theme.colors.primary,
     fontWeight: "700",
+    color: theme.colors.primary,
     flex: 1,
     marginRight: 8,
   },
   ticketBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 8,
-  },
-  statusResolved: {
-    backgroundColor: "rgba(0, 106, 97, 0.1)",
-  },
-  statusProgress: {
-    backgroundColor: "rgba(19, 27, 46, 0.1)",
-  },
-  statusPending: {
-    backgroundColor: "rgba(245, 127, 23, 0.1)",
+    borderRadius: 4,
   },
   ticketBadgeText: {
     ...theme.typography.labelMd,
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: "700",
+  },
+  statusResolved: {
+    backgroundColor: "rgba(0, 106, 97, 0.08)",
+  },
+  statusProgress: {
+    backgroundColor: "rgba(245, 127, 23, 0.08)",
+  },
+  statusPending: {
+    backgroundColor: "rgba(118, 119, 125, 0.08)",
   },
   textResolved: {
     color: theme.colors.secondary,
   },
   textProgress: {
-    color: theme.colors.primary,
+    color: "#b26a00",
   },
   textPending: {
-    color: "#f57f17",
+    color: theme.colors.outline,
   },
   ticketBottomRow: {
     flexDirection: "row",
@@ -702,56 +862,41 @@ const styles = StyleSheet.create({
   },
   ticketAssigned: {
     ...theme.typography.labelMd,
+    fontSize: 10,
     color: theme.colors.onSurfaceVariant,
-    fontSize: 11,
   },
   ticketTime: {
     ...theme.typography.labelMd,
+    fontSize: 9,
     color: theme.colors.outline,
-    fontSize: 10,
   },
   contactsList: {
-    gap: theme.spacing.md,
-    paddingRight: theme.spacing.md,
+    gap: 14,
+    paddingVertical: 4,
   },
   contactItem: {
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
   contactAvatarBorder: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    borderWidth: 1,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 2,
     borderColor: theme.colors.outlineVariant,
+    justifyContent: "center",
+    alignItems: "center",
     padding: 2,
   },
   contactAvatar: {
     width: "100%",
     height: "100%",
-    borderRadius: 28,
+    borderRadius: 24,
   },
   contactLabel: {
     ...theme.typography.labelMd,
-    fontSize: 11,
-    color: theme.colors.onSurface,
-  },
-  fab: {
-    position: "absolute",
-    bottom: 24,
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: theme.colors.secondary,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: theme.colors.secondary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
-    zIndex: 40,
+    color: theme.colors.primary,
+    fontWeight: "500",
   },
   modalOverlay: {
     flex: 1,
@@ -762,81 +907,124 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: "80%",
-    padding: 24,
+    maxHeight: "85%",
   },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.outlineVariant,
   },
   modalTitle: {
-    ...theme.typography.headlineLg,
-    fontSize: 20,
-    color: theme.colors.primary,
+    ...theme.typography.headlineMd,
     fontWeight: "700",
+    color: theme.colors.primary,
   },
-  modalForm: {
-    gap: 16,
+  formScroll: {
+    padding: 20,
     paddingBottom: 40,
   },
   label: {
     ...theme.typography.labelMd,
     color: theme.colors.onSurfaceVariant,
+    marginBottom: 6,
+    marginTop: 14,
   },
-  textInput: {
-    backgroundColor: theme.colors.surfaceContainerLowest,
+  inputField: {
+    height: 48,
     borderWidth: 1,
     borderColor: theme.colors.outlineVariant,
     borderRadius: 8,
-    height: 48,
-    paddingHorizontal: 16,
-    ...theme.typography.bodyLg,
-    fontSize: 14,
-    color: theme.colors.onSurface,
+    paddingHorizontal: 12,
+    backgroundColor: "#ffffff",
+    ...theme.typography.bodyMd,
+    color: theme.colors.primary,
   },
-  categoryRow: {
+  categoryGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+    marginVertical: 4,
   },
   categoryBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+    height: 38,
     borderWidth: 1,
     borderColor: theme.colors.outlineVariant,
-    backgroundColor: theme.colors.surfaceContainerLowest,
+    borderRadius: 19,
+    paddingHorizontal: 14,
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
   },
   categoryBtnActive: {
+    backgroundColor: theme.colors.secondaryContainer,
     borderColor: theme.colors.secondary,
-    backgroundColor: "rgba(0,106,97,0.05)",
   },
   categoryBtnText: {
     ...theme.typography.button,
-    color: theme.colors.onSurfaceVariant,
     fontSize: 12,
+    color: theme.colors.onSurfaceVariant,
   },
   categoryBtnTextActive: {
     color: theme.colors.secondary,
-    fontWeight: "600",
+    fontWeight: "700",
   },
-  submitBtn: {
-    backgroundColor: theme.colors.secondary,
+  textInputArea: {
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
     borderRadius: 8,
-    height: 48,
+    padding: 12,
+    backgroundColor: "#ffffff",
+    height: 100,
+    textAlignVertical: "top",
+    ...theme.typography.bodyMd,
+    color: theme.colors.primary,
+  },
+  urgentRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.outlineVariant,
+  },
+  urgentTitle: {
+    ...theme.typography.button,
+    fontWeight: "700",
+    color: theme.colors.primary,
+  },
+  urgentDesc: {
+    ...theme.typography.labelMd,
+    color: theme.colors.onSurfaceVariant,
+    fontSize: 10,
+    marginTop: 2,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderWidth: 1,
+    borderColor: theme.colors.outline,
+    borderRadius: 4,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 8,
-    shadowColor: theme.colors.secondary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+  },
+  checkboxChecked: {
+    backgroundColor: theme.colors.secondary,
+    borderColor: theme.colors.secondary,
+  },
+  submitBtn: {
+    height: 52,
+    backgroundColor: theme.colors.secondary,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 24,
   },
   submitBtnText: {
     ...theme.typography.button,
     color: "#ffffff",
+    fontSize: 16,
   },
 });

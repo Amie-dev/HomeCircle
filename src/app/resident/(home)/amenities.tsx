@@ -163,7 +163,7 @@ export default function AmenityBookingScreen() {
         </View>
 
         {/* Upcoming Booking Alert Banner */}
-        {bookingsList.length > 0 ? (
+        {bookingsList.length > 0 && (
           <View style={styles.alertBanner}>
             <View style={styles.alertLeft}>
               <View style={styles.alertIconBox}>
@@ -175,20 +175,6 @@ export default function AmenityBookingScreen() {
                 <Text style={styles.alertTime}>
                   {bookingsList[bookingsList.length - 1].booking_date}, {bookingsList[bookingsList.length - 1].start_time} - {bookingsList[bookingsList.length - 1].end_time}
                 </Text>
-              </View>
-            </View>
-            <MaterialIcons name="chevron-right" size={24} color={theme.colors.secondary} />
-          </View>
-        ) : (
-          <View style={styles.alertBanner}>
-            <View style={styles.alertLeft}>
-              <View style={styles.alertIconBox}>
-                <MaterialIcons name="calendar-today" size={18} color="#ffffff" />
-              </View>
-              <View>
-                <Text style={styles.alertSubLabel}>UPCOMING BOOKING</Text>
-                <Text style={styles.alertTitle}>Tennis Court 2</Text>
-                <Text style={styles.alertTime}>Today, 18:00 - 19:30</Text>
               </View>
             </View>
             <MaterialIcons name="chevron-right" size={24} color={theme.colors.secondary} />
