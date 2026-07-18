@@ -159,19 +159,18 @@ export function useUpdateResidentVerification() {
         throw new Error(error.message || 'Failed to update resident status');
       }
 
-      // If status changed to Verified, send a push notification
+      // If status changed to Verified, log a push notification in Supabase
       if (isVerified && !previousStatus) {
         try {
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: "Verification Approved 🏠",
-              body: "Approved! You are now a flat member.",
-              data: { residentId: userId },
-            },
-            trigger: null,
+          await supabase.from("push_notifications").insert({
+            user_id: userId,
+            title: "Verification Approved 🏠",
+            body: "Approved! You are now a flat member.",
+            screen: "/resident",
+            status: "Sent",
           });
         } catch (notifErr) {
-          console.warn("Failed to send verification push notification:", notifErr);
+          console.warn("Failed to insert verification push notification:", notifErr);
         }
       }
 

@@ -16,6 +16,7 @@ import { useCreatePass, usePassesHistory, useRegisterProfile } from "../hooks/us
 import { useProfileStore } from "../store/useProfileStore";
 import { useGuestProfileStore } from "../store/useGuestProfileStore";
 import { theme } from "../theme";
+import { supabase } from "../../utils/supabase";
 
 // Extracted Modular Components
 import { PassHistoryList } from "../components/request-pass/PassHistoryList";
@@ -91,6 +92,8 @@ export default function RequestPassScreen() {
     afterScanExpiry: string;
     societyId?: string;
     societyName?: string;
+    towerId?: string;
+    flatId?: string;
   }) => {
     if (!activeProfile) {
       setShowRegModal(true);
@@ -99,6 +102,7 @@ export default function RequestPassScreen() {
 
     const expiryDate = new Date();
     expiryDate.setHours(expiryDate.getHours() + formData.expiryHours);
+    const initialStatus = profile ? "Approved" : "Pending";
 
     createPass.mutate({
       user_id: activeProfile.id,
@@ -108,7 +112,7 @@ export default function RequestPassScreen() {
       designation: formData.visitorDesignation,
       tower_no: formData.towerNo,
       flat_no: formData.flatNo,
-      status: "Approved",
+      status: initialStatus,
       expiry_hours: formData.expiryHours,
       expiry_time: expiryDate.toISOString(),
       after_scan_qr_expiry: formData.afterScanExpiry,
@@ -120,10 +124,37 @@ export default function RequestPassScreen() {
         societyName: formData.societyName,
       },
     }, {
-      onSuccess: (newPass) => {
+      onSuccess: async (newPass) => {
+        // If it's a guest request (Pending), notify the flat admin/resident
+        if (initialStatus === "Pending" && formData.flatId) {
+          try {
+            const { data: member } = await supabase
+              .from("societymembers")
+              .select("user_id")
+              .eq("flat_id", formData.flatId)
+              .maybeSingle();
+
+            if (member) {
+              await supabase
+                .from("push_notifications")
+                .insert({
+                  user_id: member.user_id,
+                  title: "Visitor Approval Request 🔔",
+                  body: `${formData.visitorName} is requesting access to your flat.`,
+                  screen: "/resident/visitors",
+                  status: "Sent",
+                });
+            }
+          } catch (notifErr) {
+            console.warn("Failed to notify resident of guest pass request:", notifErr);
+          }
+        }
+
         Alert.alert(
-          "Pass Approved",
-          `Pass generated successfully for ${newPass.visitor_name}.\nDestination: Greenwood Heights, Tower ${newPass.tower_no}, Flat ${newPass.flat_no}`,
+          initialStatus === "Approved" ? "Pass Approved" : "Access Request Sent",
+          initialStatus === "Approved"
+            ? `Pass generated successfully for ${newPass.visitor_name}.\nDestination: Greenwood Heights, Tower ${newPass.tower_no}, Flat ${newPass.flat_no}`
+            : `Your request to visit Tower ${newPass.tower_no}, Flat ${newPass.flat_no} has been sent to the resident for approval.`,
           [
             {
               text: "View History",

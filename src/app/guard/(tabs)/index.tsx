@@ -196,6 +196,37 @@ export default function GuardScanner() {
 
       if (updateErr) throw updateErr;
 
+      // Notify flat admin/resident of the check-in
+      try {
+        const { data: flatData } = await supabase
+          .from("flats")
+          .select("id")
+          .eq("flat_number", pass.flat_no)
+          .maybeSingle();
+
+        if (flatData) {
+          const { data: member } = await supabase
+            .from("societymembers")
+            .select("user_id")
+            .eq("flat_id", flatData.id)
+            .maybeSingle();
+
+          if (member) {
+            await supabase
+              .from("push_notifications")
+              .insert({
+                user_id: member.user_id,
+                title: "Visitor Checked In 🚪",
+                body: `${pass.visitor_name} has checked in at the gate.`,
+                screen: "/resident",
+                status: "Sent",
+              });
+          }
+        }
+      } catch (notifErr) {
+        console.warn("Failed to notify resident of visitor check-in:", notifErr);
+      }
+
       Alert.alert(
         "Access Approved",
         `Visitor: ${pass.visitor_name}\nType: ${pass.designation}\nApartment: T-${pass.tower_no}, F-${pass.flat_no}\n\nEntry logged successfully.`,

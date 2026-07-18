@@ -26,6 +26,8 @@ interface PassRequestFormProps {
     afterScanExpiry: string;
     societyId?: string;
     societyName?: string;
+    towerId?: string;
+    flatId?: string;
   }) => void;
 }
 
@@ -225,6 +227,8 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
       afterScanExpiry,
       societyId: societyData?.id || undefined,
       societyName: societyData?.name || societyQuery,
+      towerId: towerData?.id || undefined,
+      flatId: flatData?.id || undefined,
     });
   };
 

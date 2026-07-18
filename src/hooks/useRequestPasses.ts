@@ -26,6 +26,7 @@ export interface VisitorPass {
     [key: string]: any;
   };
   created_at: string;
+  user_id: string;
 }
 
 // 1. Fetch History Query Hook

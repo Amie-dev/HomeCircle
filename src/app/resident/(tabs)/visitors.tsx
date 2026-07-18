@@ -20,13 +20,26 @@ export default function VisitorsScreen() {
 
   // Mutation to approve/reject passes
   const updatePassStatusMutation = useMutation({
-    mutationFn: async ({ passId, status }: { passId: string; status: "Approved" | "Rejected" }) => {
+    mutationFn: async ({ passId, status, guestId }: { passId: string; status: "Approved" | "Rejected"; guestId: string }) => {
       const { error } = await supabase
         .from("requestpasses")
         .update({ status })
         .eq("id", passId);
       
       if (error) throw error;
+
+      // Notify the guest in push_notifications table
+      await supabase
+        .from("push_notifications")
+        .insert({
+          user_id: guestId,
+          title: status === "Approved" ? "Pass Approved 🎟️" : "Pass Rejected ❌",
+          body: status === "Approved"
+            ? "Your request to visit has been approved by the resident."
+            : "Your request to visit was rejected by the resident.",
+          screen: "/request-pass",
+          status: "Sent",
+        });
     },
     onSuccess: (_, variables) => {
       Alert.alert("Success", `Visitor pass has been ${variables.status.toLowerCase()}.`);
@@ -37,8 +50,8 @@ export default function VisitorsScreen() {
     }
   });
 
-  const handleAction = (passId: string, status: "Approved" | "Rejected") => {
-    updatePassStatusMutation.mutate({ passId, status });
+  const handleAction = (passId: string, status: "Approved" | "Rejected", guestId: string) => {
+    updatePassStatusMutation.mutate({ passId, status, guestId });
   };
 
   const getVisitorIcon = (designation: string) => {
@@ -204,7 +217,7 @@ export default function VisitorsScreen() {
                           if (isMock) {
                             Alert.alert("Action Mocked", "Rejected visitor via mock demo!");
                           } else {
-                            handleAction(item.id, "Rejected");
+                            handleAction(item.id, "Rejected", item.user_id);
                           }
                         }}
                       >
@@ -218,7 +231,7 @@ export default function VisitorsScreen() {
                           if (isMock) {
                             Alert.alert("Action Mocked", "Approved visitor via mock demo!");
                           } else {
-                            handleAction(item.id, "Approved");
+                            handleAction(item.id, "Approved", item.user_id);
                           }
                         }}
                       >
