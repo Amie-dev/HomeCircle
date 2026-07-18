@@ -56,7 +56,18 @@ export default function CreateAccountScreen() {
       }
 
       const userId = authData.user?.id || "temp-auth-uuid-" + Date.now();
-const token = await getPushToken();
+      const token = await getPushToken();
+
+      if (token) {
+        // Insert token into notifications table first (avoiding duplicates)
+        const { error: notificationError } = await supabase
+          .from("notifications")
+          .insert({ token });
+
+        if (notificationError && notificationError.code !== "23505") {
+          console.error("Error saving token to notifications table:", notificationError.message);
+        }
+      }
 
       // 1b. Insert credentials into custom database users table
       const { error: dbError } = await supabase
@@ -68,7 +79,7 @@ const token = await getPushToken();
           phone: phone,
           email: email.trim(),
           password: password,
-          notification_token:token
+          notification_token: token
         });
 
       if (dbError) {

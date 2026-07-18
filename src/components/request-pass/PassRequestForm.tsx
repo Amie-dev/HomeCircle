@@ -142,7 +142,7 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
           .from("towers")
           .select("*")
           .eq("society_id", societyData.id)
-          .ilike("tower_no", towerQuery.trim())
+          .or(`name.ilike.${towerQuery.trim()},tower_id.ilike.${towerQuery.trim()}`)
           .maybeSingle();
 
         if (error) throw error;

@@ -96,6 +96,7 @@ export default function SocietySetupScreen() {
         towerInsertData.push({
           society_id: societyId,
           name: `Tower ${char}${prefix}`,
+          tower_id: `${char}${prefix}`,
         });
       }
 

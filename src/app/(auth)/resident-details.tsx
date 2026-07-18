@@ -107,7 +107,7 @@ export default function ResidentDetailsScreen() {
           .from("towers")
           .select("*")
           .eq("society_id", societyData.id)
-          .ilike("name", towerQuery.trim())
+          .or(`name.ilike.${towerQuery.trim()},tower_id.ilike.${towerQuery.trim()}`)
           .maybeSingle();
 
         if (error) throw error;
