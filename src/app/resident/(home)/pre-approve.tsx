@@ -68,28 +68,31 @@ export default function PreApproveGuestScreen() {
     expiryDate.setHours(expiryDate.getHours() + 24); // Default to 24h validity
 
     createPass.mutate({
-      user_id: profile.id,
-      visitor_name: guestName,
-      visitor_email: "",
-      visitor_phone: mobileNumber,
-      designation: category,
-      tower_no: profile.towerName || "Block C",
-      flat_no: profile.flatName || "402",
-      status: "Approved",
-      expiry_hours: 24,
-      expiry_time: expiryDate.toISOString(),
-      after_scan_qr_expiry: "Once",
-      resident_details: {
-        fullName: profile.fullName,
-        email: profile.email,
-        phone: profile.phone,
-        societyId: profile.societyId,
-        societyName: "HomeCircle Society",
-        purpose: purpose.trim(),
-        vehicleNumber: vehicleNumber.trim(),
-        expectedArrival: expectedArrival.trim(),
-        isFrequent: frequent,
+      passData: {
+        user_id: profile.id,
+        visitor_name: guestName,
+        visitor_email: "",
+        visitor_phone: mobileNumber,
+        designation: category,
+        tower_no: profile.towerName || "Block C",
+        flat_no: profile.flatName || "402",
+        status: "Approved",
+        expiry_hours: 24,
+        expiry_time: expiryDate.toISOString(),
+        after_scan_qr_expiry: "Once",
+        resident_details: {
+          fullName: profile.fullName,
+          email: profile.email,
+          phone: profile.phone,
+          societyId: profile.societyId,
+          societyName: "HomeCircle Society",
+          purpose: purpose.trim(),
+          vehicleNumber: vehicleNumber.trim(),
+          expectedArrival: expectedArrival.trim(),
+          isFrequent: frequent,
+        },
       },
+      flatId: undefined,
     }, {
       onSuccess: () => {
         setShowQRModal(true);

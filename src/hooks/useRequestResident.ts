@@ -20,8 +20,8 @@ export interface ResidentVerification {
     flatNumber: string;
   };
   created_at: string;
-  // Joined fields from guestusers
-  guestusers?: {
+  // Joined fields from users
+  users?: {
     full_name: string;
     email: string;
     phone: string;
@@ -108,7 +108,7 @@ export function useResidentVerifications(societyId?: string) {
           is_verified,
           verification_details,
           created_at,
-          guestusers (
+          users (
             full_name,
             email,
             phone
@@ -158,6 +158,31 @@ export function useUpdateResidentVerification() {
 
       if (error) {
         throw new Error(error.message || 'Failed to update resident status');
+      }
+
+      if (isVerified) {
+        try {
+          // 1. Link them in societymembers
+          await supabase
+            .from("societymembers")
+            .upsert({
+              user_id: userId,
+              society_id: data.society_id,
+              role: data.role || "Resident",
+              tower_id: data.tower_id || null,
+              flat_id: data.flat_id || null,
+            }, { onConflict: "user_id,society_id" });
+
+          // 2. Set them as flat_admin_id for their flat
+          if (data.flat_id) {
+            await supabase
+              .from("flats")
+              .update({ flat_admin_id: userId })
+              .eq("id", data.flat_id);
+          }
+        } catch (smErr) {
+          console.warn("Failed to update member relations:", smErr);
+        }
       }
 
       // If status changed to Verified, log a push notification in Supabase

@@ -10,7 +10,7 @@ import {
   Platform,
   KeyboardAvoidingView,
 } from "react-native";
-import { MaterialIcons } from "@react-native-vector-icons/material-icons";
+import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../theme";
 
 interface ProfileRegModalProps {
@@ -49,10 +49,9 @@ export const ProfileRegModal: React.FC<ProfileRegModalProps> = ({
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
+        style={styles.modalOverlay}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Guest Registration</Text>
             <Text style={styles.modalSubtitle}>
@@ -132,9 +131,8 @@ export const ProfileRegModal: React.FC<ProfileRegModalProps> = ({
             <Text style={styles.modalLaterButtonText}>Maybe Later</Text>
           </TouchableOpacity>
         </View>
-      </View>
-    </KeyboardAvoidingView>
-  </Modal>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 };
 

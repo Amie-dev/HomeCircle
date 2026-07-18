@@ -25,9 +25,16 @@ export default function SocietyManagementScreen() {
 
   const [societyName, setSocietyName] = useState(profile?.societyName || "HomeCircle Society");
   const [address, setAddress] = useState("Sector 15, Gurgaon");
-  const [towersCount, setTowersCount] = useState("4");
-  const [flatsCount, setFlatsCount] = useState("120");
+  const [towersCount, setTowersCount] = useState("0");
+  const [flatsCount, setFlatsCount] = useState("0");
   const [societyIdCode, setSocietyIdCode] = useState("hc001");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [pinCode, setPinCode] = useState("");
+  const [description, setDescription] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -47,8 +54,15 @@ export default function SocietyManagementScreen() {
           setSocietyName(data.name || "");
           setAddress(data.address || "");
           setSocietyIdCode(data.society_id || "");
+          setCity(data.city || "");
+          setState(data.state || "");
+          setPinCode(data.pin_code || "");
+          setDescription(data.description || "");
+          setLogoUrl(data.logo_url || "");
+          setLatitude(data.latitude ? data.latitude.toString() : "");
+          setLongitude(data.longitude ? data.longitude.toString() : "");
           
-          // Count towers and flats if available
+          // Count towers
           const { count: towers } = await supabase
             .from("towers")
             .select("*", { count: "exact", head: true })
@@ -56,15 +70,26 @@ export default function SocietyManagementScreen() {
           
           if (towers !== null) setTowersCount(towers.toString());
 
-          const { count: flats } = await supabase
-            .from("flats")
-            .select("*", { count: "exact", head: true })
+          // Count flats in society towers
+          const { data: towersData } = await supabase
+            .from("towers")
+            .select("id")
             .eq("society_id", profile.societyId);
 
-          if (flats !== null) setFlatsCount(flats.toString());
+          if (towersData && towersData.length > 0) {
+            const towerIds = towersData.map((t) => t.id);
+            const { count: flats } = await supabase
+              .from("flats")
+              .select("*", { count: "exact", head: true })
+              .in("tower_id", towerIds);
+
+            if (flats !== null) setFlatsCount(flats.toString());
+          } else {
+            setFlatsCount("0");
+          }
         }
       } catch (err: any) {
-        console.warn("Could not fetch society from Supabase, using local defaults:", err.message);
+        console.warn("Could not fetch society from Supabase:", err.message);
       } finally {
         setLoading(false);
       }
@@ -79,19 +104,32 @@ export default function SocietyManagementScreen() {
       return;
     }
 
+    if (!profile?.societyId || profile.societyId.startsWith("mock-")) {
+      Alert.alert(
+        "Database Sync Required",
+        "Your profile is running in mock/offline mode. To save settings and configure database tables online, please log out and set up a new society."
+      );
+      return;
+    }
+
     setSaving(true);
     try {
-      if (profile?.societyId) {
-        const { error } = await supabase
-          .from("societies")
-          .update({
-            name: societyName.trim(),
-            address: address.trim(),
-          })
-          .eq("id", profile.societyId);
+      const { error } = await supabase
+        .from("societies")
+        .update({
+          name: societyName.trim(),
+          address: address.trim(),
+          city: city.trim() || null,
+          state: state.trim() || null,
+          pin_code: pinCode.trim() || null,
+          description: description.trim() || null,
+          logo_url: logoUrl.trim() || null,
+          latitude: latitude.trim() ? parseFloat(latitude) : null,
+          longitude: longitude.trim() ? parseFloat(longitude) : null,
+        })
+        .eq("id", profile.societyId);
 
-        if (error) throw error;
-      }
+      if (error) throw error;
 
       // Update local profile store so dashboard/settings reflect changes immediately
       if (profile) {
@@ -144,6 +182,20 @@ export default function SocietyManagementScreen() {
               <Text style={styles.brandAddress}>{address}</Text>
             </View>
 
+            {/* Manage Towers Link Card */}
+            <TouchableOpacity
+              style={styles.manageTowersButton}
+              onPress={() => router.push("/admin/socities/towers" as any)}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="layers" size={28} color={theme.colors.secondary} />
+              <View style={styles.manageTowersTextContainer}>
+                <Text style={styles.manageTowersTitle}>Manage Towers & Flats</Text>
+                <Text style={styles.manageTowersSubtitle}>Add and configure society towers, blocks, and flats</Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={24} color={theme.colors.outline} />
+            </TouchableOpacity>
+
             {/* Config Fields */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>General Configurations</Text>
@@ -168,6 +220,95 @@ export default function SocietyManagementScreen() {
                 placeholderTextColor={theme.colors.outline}
                 multiline
                 numberOfLines={3}
+              />
+
+              {/* Description */}
+              <Text style={styles.label}>Description</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Brief description about the society/rules"
+                placeholderTextColor={theme.colors.outline}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+
+            {/* Location details */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Location Details</Text>
+
+              {/* City and State */}
+              <View style={styles.gridContainer}>
+                <View style={[styles.gridItem, { marginRight: 8 }]}>
+                  <Text style={styles.label}>City</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={city}
+                    onChangeText={setCity}
+                    placeholder="City"
+                    placeholderTextColor={theme.colors.outline}
+                  />
+                </View>
+                <View style={[styles.gridItem, { marginLeft: 8 }]}>
+                  <Text style={styles.label}>State</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={state}
+                    onChangeText={setState}
+                    placeholder="State"
+                    placeholderTextColor={theme.colors.outline}
+                  />
+                </View>
+              </View>
+
+              {/* Pin Code */}
+              <Text style={styles.label}>Pin Code</Text>
+              <TextInput
+                style={styles.input}
+                value={pinCode}
+                onChangeText={setPinCode}
+                placeholder="Pin code"
+                placeholderTextColor={theme.colors.outline}
+                keyboardType="numeric"
+              />
+
+              {/* Latitude and Longitude */}
+              <View style={styles.gridContainer}>
+                <View style={[styles.gridItem, { marginRight: 8 }]}>
+                  <Text style={styles.label}>Latitude</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={latitude}
+                    onChangeText={setLatitude}
+                    placeholder="e.g. 28.4595"
+                    placeholderTextColor={theme.colors.outline}
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={[styles.gridItem, { marginLeft: 8 }]}>
+                  <Text style={styles.label}>Longitude</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={longitude}
+                    onChangeText={setLongitude}
+                    placeholder="e.g. 77.0266"
+                    placeholderTextColor={theme.colors.outline}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              {/* Logo URL */}
+              <Text style={styles.label}>Logo Image URL</Text>
+              <TextInput
+                style={styles.input}
+                value={logoUrl}
+                onChangeText={setLogoUrl}
+                placeholder="https://example.com/logo.png"
+                placeholderTextColor={theme.colors.outline}
+                autoCapitalize="none"
               />
             </View>
 
@@ -376,5 +517,34 @@ const styles = StyleSheet.create({
   saveButtonText: {
     ...theme.typography.button,
     color: theme.colors.onPrimary,
+  },
+  manageTowersButton: {
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    borderRadius: theme.rounded.lg,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: theme.spacing.lg,
+    shadowColor: theme.colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  manageTowersTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  manageTowersTitle: {
+    ...theme.typography.bodyLg,
+    fontWeight: "700",
+    color: theme.colors.primary,
+  },
+  manageTowersSubtitle: {
+    fontSize: 12,
+    color: theme.colors.onSurfaceVariant,
+    marginTop: 2,
   },
 });

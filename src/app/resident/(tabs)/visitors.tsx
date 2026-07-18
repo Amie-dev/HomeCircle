@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image, ImageBackground } from "react-native";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -17,7 +17,39 @@ export default function VisitorsScreen() {
   const [activeTab, setActiveTab] = useState<"approvals" | "history">("approvals");
 
   // Fetch visitor history/live data
-  const { data: historyList = [], isLoading } = usePassesHistory(profile?.id);
+  const { data: historyList = [], isLoading } = usePassesHistory(
+    profile?.id,
+    profile?.role,
+    profile?.societyId,
+    profile?.towerId,
+    profile?.towerName,
+    profile?.flatName
+  );
+
+  // Subscribe to realtime updates for requestpasses table
+  useEffect(() => {
+    if (!profile?.flatName) return;
+
+    const channel = supabase
+      .channel("realtime-visitor-passes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "requestpasses",
+          filter: `flat_no=eq.${profile.flatName}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["passesHistory"] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profile?.flatName]);
 
   // Mutation to approve/reject passes
   const updatePassStatusMutation = useMutation({

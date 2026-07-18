@@ -1,16 +1,16 @@
-import React, { useState, useEffect } from "react";
+import { MaterialIcons } from "@react-native-vector-icons/material-icons";
+import React, { useEffect, useState } from "react";
 import {
-  StyleSheet,
-  Text,
-  View,
-  TextInput,
-  TouchableOpacity,
   ActivityIndicator,
   Alert,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { MaterialIcons } from "@react-native-vector-icons/material-icons";
-import { theme } from "../../theme";
 import { supabase } from "../../../utils/supabase";
+import { theme } from "../../theme";
 
 interface PassRequestFormProps {
   isPending: boolean;
@@ -95,13 +95,18 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
       setSocietyError(null);
       try {
         const query = societyQuery.trim();
-        const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(query);
+        const isUuid =
+          /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
+            query,
+          );
 
         let selectQuery = supabase.from("societies").select("*");
         if (isUuid) {
           selectQuery = selectQuery.eq("id", query);
         } else {
-          selectQuery = selectQuery.or(`society_id.eq.${query.toLowerCase()},name.ilike.%${query}%`);
+          selectQuery = selectQuery.or(
+            `society_id.eq."${query.toLowerCase()}",name.ilike."%${query}%"`,
+          );
         }
 
         const { data, error } = await selectQuery.maybeSingle();
@@ -111,6 +116,7 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
         if (data) {
           setSocietyData(data);
           setSocietyError(null);
+          console.log({ societyData });
         } else {
           setSocietyData(null);
           setSocietyError("Invalid society name or unique ID code.");
@@ -137,31 +143,39 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
     const timer = setTimeout(async () => {
       setValidatingTower(true);
       setTowerError(null);
-      try {
-        const { data, error } = await supabase
-          .from("towers")
-          .select("*")
-          .eq("society_id", societyData.id)
-          .or(`name.ilike.${towerQuery.trim()},tower_id.ilike.${towerQuery.trim()}`)
-          .maybeSingle();
 
+      try {
+        const query = towerQuery.trim();
+
+       const { data, error } = await supabase
+  .from("towers")
+  .select("*")
+  .eq("society_id", societyData.id)
+  .or(`tower_id.eq.${query},name.ilike.%${query}%`)
+  .maybeSingle();
+       
+
+     
+        console.log({ data });
+        console.log({ error });
         if (error) throw error;
 
-        if (data) {
-          setTowerData(data);
-          setTowerError(null);
-        } else {
+        if (!data) {
           setTowerData(null);
           setTowerError("Tower/Block not found in this society.");
+          return;
         }
+
+        setTowerData(data);
+        setTowerError(null);
       } catch (err: any) {
-        console.warn("Tower lookup failed:", err.message);
-        setTowerError("Database lookup warning.");
+        console.error("Tower lookup failed:", err);
+        setTowerData(null);
+        setTowerError("Unable to validate tower.");
       } finally {
         setValidatingTower(false);
       }
     }, 600);
-
     return () => clearTimeout(timer);
   }, [towerQuery, societyData]);
 
@@ -206,13 +220,19 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
 
   const handleSubmit = () => {
     if (!visitorName || !visitorEmail || !visitorPhone) {
-      Alert.alert("Missing Fields", "Please complete all visitor profile fields.");
+      Alert.alert(
+        "Missing Fields",
+        "Please complete all visitor profile fields.",
+      );
       return;
     }
 
     // Require destination mapping
     if (!societyQuery || !towerQuery || !flatQuery) {
-      Alert.alert("Destination Error", "Please provide society, tower, and flat destinations.");
+      Alert.alert(
+        "Destination Error",
+        "Please provide society, tower, and flat destinations.",
+      );
       return;
     }
 
@@ -221,8 +241,8 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
       visitorEmail,
       visitorPhone,
       visitorDesignation,
-      towerNo: towerQuery,
-      flatNo: flatQuery,
+      towerNo: towerData?.tower_id || towerQuery,
+      flatNo: flatData?.flat_number || flatQuery,
       expiryHours,
       afterScanExpiry,
       societyId: societyData?.id || undefined,
@@ -237,9 +257,14 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
       {/* Visitor Details */}
       <View style={styles.formSection}>
         <Text style={styles.sectionLabel}>VISITOR DETAILS</Text>
-        
+
         <View style={styles.inputContainer}>
-          <MaterialIcons name="person" size={20} color={theme.colors.outline} style={styles.inputIcon} />
+          <MaterialIcons
+            name="person"
+            size={20}
+            color={theme.colors.outline}
+            style={styles.inputIcon}
+          />
           <TextInput
             style={styles.textInput}
             placeholder="Full Name"
@@ -250,7 +275,12 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
         </View>
 
         <View style={styles.inputContainer}>
-          <MaterialIcons name="alternate-email" size={20} color={theme.colors.outline} style={styles.inputIcon} />
+          <MaterialIcons
+            name="alternate-email"
+            size={20}
+            color={theme.colors.outline}
+            style={styles.inputIcon}
+          />
           <TextInput
             style={styles.textInput}
             placeholder="Email Address"
@@ -263,7 +293,12 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
         </View>
 
         <View style={styles.inputContainer}>
-          <MaterialIcons name="phone-iphone" size={20} color={theme.colors.outline} style={styles.inputIcon} />
+          <MaterialIcons
+            name="phone-iphone"
+            size={20}
+            color={theme.colors.outline}
+            style={styles.inputIcon}
+          />
           <TextInput
             style={styles.textInput}
             placeholder="Phone Number"
@@ -287,7 +322,9 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
                 onPress={() => setVisitorDesignation(item)}
                 style={[styles.chip, isSelected && styles.chipActive]}
               >
-                <Text style={[styles.chipText, isSelected && styles.chipTextActive]}>
+                <Text
+                  style={[styles.chipText, isSelected && styles.chipTextActive]}
+                >
                   {item}
                 </Text>
               </TouchableOpacity>
@@ -308,7 +345,9 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
                 onPress={() => setExpiryHours(hours)}
                 style={[styles.chip, isSelected && styles.chipActive]}
               >
-                <Text style={[styles.chipText, isSelected && styles.chipTextActive]}>
+                <Text
+                  style={[styles.chipText, isSelected && styles.chipTextActive]}
+                >
                   {hours} hrs
                 </Text>
               </TouchableOpacity>
@@ -329,7 +368,9 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
                 onPress={() => setAfterScanExpiry(item)}
                 style={[styles.chip, isSelected && styles.chipActive]}
               >
-                <Text style={[styles.chipText, isSelected && styles.chipTextActive]}>
+                <Text
+                  style={[styles.chipText, isSelected && styles.chipTextActive]}
+                >
                   {item}
                 </Text>
               </TouchableOpacity>
@@ -341,15 +382,24 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
       {/* Destination Selection */}
       <View style={styles.formSection}>
         <Text style={styles.sectionLabel}>DESTINATION SOCIETY</Text>
-        
+
         {/* Society Search Input */}
         <View
           style={[
             styles.inputContainer,
-            societyError ? styles.inputBoxError : societyData ? styles.inputBoxSuccess : null,
+            societyError
+              ? styles.inputBoxError
+              : societyData
+                ? styles.inputBoxSuccess
+                : null,
           ]}
         >
-          <MaterialIcons name="domain" size={20} color={theme.colors.outline} style={styles.inputIcon} />
+          <MaterialIcons
+            name="domain"
+            size={20}
+            color={theme.colors.outline}
+            style={styles.inputIcon}
+          />
           <TextInput
             style={styles.textInput}
             placeholder="Search Society Name or ID"
@@ -357,7 +407,9 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
             value={societyQuery}
             onChangeText={setSocietyQuery}
           />
-          {validatingSociety && <ActivityIndicator size="small" color={theme.colors.secondary} />}
+          {validatingSociety && (
+            <ActivityIndicator size="small" color={theme.colors.secondary} />
+          )}
           {!validatingSociety && societyData && (
             <MaterialIcons name="check-circle" size={20} color="#2e7d32" />
           )}
@@ -365,7 +417,11 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
         {societyError && <Text style={styles.errorText}>{societyError}</Text>}
         {!societyError && societyData && (
           <Text style={styles.successText}>
-            ✓ Verified: {societyData.name} ({societyData.society_id ? societyData.society_id.toUpperCase() : "No Code"})
+            ✓ Verified: {societyData.name} (
+            {societyData.society_id
+              ? societyData.society_id.toUpperCase()
+              : "No Code"}
+            )
           </Text>
         )}
 
@@ -376,10 +432,19 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
               style={[
                 styles.inputContainer,
                 { marginBottom: 0 },
-                towerError ? styles.inputBoxError : towerData ? styles.inputBoxSuccess : null,
+                towerError
+                  ? styles.inputBoxError
+                  : towerData
+                    ? styles.inputBoxSuccess
+                    : null,
               ]}
             >
-              <MaterialIcons name="apartment" size={20} color={theme.colors.outline} style={styles.inputIcon} />
+              <MaterialIcons
+                name="apartment"
+                size={20}
+                color={theme.colors.outline}
+                style={styles.inputIcon}
+              />
               <TextInput
                 style={styles.textInput}
                 placeholder="Tower No."
@@ -388,12 +453,21 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
                 onChangeText={setTowerQuery}
                 editable={!!societyData}
               />
-              {validatingTower && <ActivityIndicator size="small" color={theme.colors.secondary} />}
+              {validatingTower && (
+                <ActivityIndicator
+                  size="small"
+                  color={theme.colors.secondary}
+                />
+              )}
               {!validatingTower && towerData && (
                 <MaterialIcons name="check-circle" size={16} color="#2e7d32" />
               )}
             </View>
-            {towerError && <Text style={[styles.errorText, { marginTop: 4 }]}>{towerError}</Text>}
+            {towerError && (
+              <Text style={[styles.errorText, { marginTop: 4 }]}>
+                {towerError}
+              </Text>
+            )}
           </View>
 
           {/* Flat input */}
@@ -402,10 +476,19 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
               style={[
                 styles.inputContainer,
                 { marginBottom: 0 },
-                flatError ? styles.inputBoxError : flatData ? styles.inputBoxSuccess : null,
+                flatError
+                  ? styles.inputBoxError
+                  : flatData
+                    ? styles.inputBoxSuccess
+                    : null,
               ]}
             >
-              <MaterialIcons name="meeting-room" size={20} color={theme.colors.outline} style={styles.inputIcon} />
+              <MaterialIcons
+                name="meeting-room"
+                size={20}
+                color={theme.colors.outline}
+                style={styles.inputIcon}
+              />
               <TextInput
                 style={styles.textInput}
                 placeholder="Flat No."
@@ -414,12 +497,21 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
                 onChangeText={setFlatQuery}
                 editable={!!towerData}
               />
-              {validatingFlat && <ActivityIndicator size="small" color={theme.colors.secondary} />}
+              {validatingFlat && (
+                <ActivityIndicator
+                  size="small"
+                  color={theme.colors.secondary}
+                />
+              )}
               {!validatingFlat && flatData && (
                 <MaterialIcons name="check-circle" size={16} color="#2e7d32" />
               )}
             </View>
-            {flatError && <Text style={[styles.errorText, { marginTop: 4 }]}>{flatError}</Text>}
+            {flatError && (
+              <Text style={[styles.errorText, { marginTop: 4 }]}>
+                {flatError}
+              </Text>
+            )}
           </View>
         </View>
       </View>
@@ -440,9 +532,10 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
           </>
         )}
       </TouchableOpacity>
-      
+
       <Text style={styles.policyText}>
-        By requesting, you agree to our <Text style={styles.policyLink}>Security Policy</Text>
+        By requesting, you agree to our{" "}
+        <Text style={styles.policyLink}>Security Policy</Text>
       </Text>
     </View>
   );

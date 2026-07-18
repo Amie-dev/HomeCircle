@@ -17,6 +17,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Notifications from "expo-notifications";
 import { useResidentVerifications, useUpdateResidentVerification } from "../../../hooks/useRequestResident";
 import { useProfileStore } from "../../../store/useProfileStore";
+import { supabase } from "../../../../utils/supabase";
+import { useQueryClient } from "@tanstack/react-query";
 
 // Configure notification behavior for when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -79,6 +81,7 @@ const mockResidents: Resident[] = [
 export default function ManageResidents() {
   const insets = useSafeAreaInsets();
   const { profile } = useProfileStore();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState<"All" | "Verified" | "Pending" | "Staff">("All");
 
@@ -105,13 +108,38 @@ export default function ManageResidents() {
     requestPermissions();
   }, []);
 
+  // Subscribe to realtime updates for userverifications table
+  useEffect(() => {
+    if (!profile?.societyId) return;
+
+    const channel = supabase
+      .channel("realtime-verifications-list")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "userverifications",
+          filter: `society_id=eq.${profile.societyId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["residentVerifications", profile.societyId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profile?.societyId]);
+
   // Update local residents state when DB verifications change
   useEffect(() => {
     if (dbVerifications) {
       const mapped: Resident[] = dbVerifications.map((v) => ({
         id: v.id,
         userId: v.user_id,
-        name: v.guestusers?.full_name || "Unknown Resident",
+        name: v.users?.full_name || "Unknown Resident",
         unit: v.role === "Guard" 
           ? "Security Guard" 
           : `${v.verification_details?.towerName || ""}, ${v.verification_details?.flatNumber || ""}`,

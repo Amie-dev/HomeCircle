@@ -121,74 +121,30 @@ export default function RequestPassScreen() {
 
     createPass.mutate(
       {
-        user_id: activeProfile.id,
-        visitor_name: formData.visitorName,
-        visitor_email: formData.visitorEmail,
-        visitor_phone: formData.visitorPhone,
-        designation: formData.visitorDesignation,
-        tower_no: formData.towerNo,
-        flat_no: formData.flatNo,
-        status: initialStatus,
-        expiry_hours: formData.expiryHours,
-        expiry_time: expiryDate.toISOString(),
-        after_scan_qr_expiry: formData.afterScanExpiry,
-        resident_details: {
-          fullName: activeProfile.fullName,
-          email: activeProfile.email,
-          phone: activeProfile.phone,
-          societyId: formData.societyId,
-          societyName: formData.societyName,
+        passData: {
+          user_id: activeProfile.id,
+          visitor_name: formData.visitorName,
+          visitor_email: formData.visitorEmail,
+          visitor_phone: formData.visitorPhone,
+          designation: formData.visitorDesignation,
+          tower_no: formData.towerNo,
+          flat_no: formData.flatNo,
+          status: initialStatus,
+          expiry_hours: formData.expiryHours,
+          expiry_time: expiryDate.toISOString(),
+          after_scan_qr_expiry: formData.afterScanExpiry,
+          resident_details: {
+            fullName: activeProfile.fullName,
+            email: activeProfile.email,
+            phone: activeProfile.phone,
+            societyId: formData.societyId,
+            societyName: formData.societyName,
+          },
         },
+        flatId: formData.flatId,
       },
       {
-        onSuccess: async (newPass) => {
-          // If it's a guest request (Pending), notify the flat admin/resident
-          if (initialStatus === "Pending" && formData.flatId) {
-            try {
-              const { data: flatData } = await supabase
-                .from("flats")
-                .select("flat_admin_id")
-                .eq("id", formData.flatId)
-                .maybeSingle();
-
-              if (flatData?.flat_admin_id) {
-                const { data: userData } = await supabase
-                  .from("users")
-                  .select("notification_token")
-                  .eq("id", flatData.flat_admin_id)
-                  .maybeSingle();
-
-                const notifTitle = "Visitor Approval Request 🔔";
-                const notifBody = `${formData.visitorName} is requesting access to your flat.`;
-
-                if (userData?.notification_token) {
-                  await sendPushNotification({
-                    token: userData.notification_token,
-                    title: notifTitle,
-                    body: notifBody,
-                    data: {
-                      screen: "/resident/visitors",
-                      url: "/resident/visitors",
-                    },
-                  });
-                }
-
-                await supabase.from("push_notifications").insert({
-                  user_id: flatData.flat_admin_id,
-                  title: notifTitle,
-                  body: notifBody,
-                  screen: "/resident/visitors",
-                  status: "Sent",
-                });
-              }
-            } catch (notifErr) {
-              console.warn(
-                "Failed to notify resident of guest pass request:",
-                notifErr,
-              );
-            }
-          }
-
+        onSuccess: (newPass) => {
           Alert.alert(
             initialStatus === "Approved"
               ? "Pass Approved"

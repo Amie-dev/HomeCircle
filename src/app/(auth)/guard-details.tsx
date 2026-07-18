@@ -49,7 +49,7 @@ export default function GuardDetailsScreen() {
         if (isUuid) {
           selectQuery = selectQuery.eq("id", query);
         } else {
-          selectQuery = selectQuery.or(`society_id.eq.${query.toLowerCase()},name.ilike.%${query}%`);
+          selectQuery = selectQuery.or(`society_id.eq."${query.toLowerCase()}",name.ilike."%${query}%"`);
         }
 
         const { data, error } = await selectQuery.maybeSingle();

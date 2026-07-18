@@ -65,7 +65,7 @@ export default function ResidentDetailsScreen() {
         if (isUuid) {
           selectQuery = selectQuery.eq("id", query);
         } else {
-          selectQuery = selectQuery.or(`society_id.eq.${query.toLowerCase()},name.ilike.%${query}%`);
+          selectQuery = selectQuery.or(`society_id.eq."${query.toLowerCase()}",name.ilike."%${query}%"`);
         }
 
         const { data, error } = await selectQuery.maybeSingle();
@@ -107,7 +107,7 @@ export default function ResidentDetailsScreen() {
           .from("towers")
           .select("*")
           .eq("society_id", societyData.id)
-          .or(`name.ilike.${towerQuery.trim()},tower_id.ilike.${towerQuery.trim()}`)
+          .or(`name.ilike."${towerQuery.trim()}",tower_id.ilike."${towerQuery.trim()}"`)
           .maybeSingle();
 
         if (error) throw error;

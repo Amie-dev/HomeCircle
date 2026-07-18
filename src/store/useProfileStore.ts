@@ -14,6 +14,7 @@ export interface ResidentProfile {
   societyId?: string;
   societyName?: string;
   towerName?: string;
+  towerId?: string;
   flatName?: string;
 }
 
@@ -73,7 +74,7 @@ export const useProfileStore = create<ProfileState>((set) => ({
               is_verified,
               society_id,
               societies ( name ),
-              towers ( name ),
+              towers ( name, tower_id ),
               flats ( flat_number )
             `)
             .eq("user_id", userId)
@@ -84,6 +85,7 @@ export const useProfileStore = create<ProfileState>((set) => ({
           let societyId = verifyData?.society_id || undefined;
           let societyName = (verifyData?.societies as any)?.name || undefined;
           let towerName = (verifyData?.towers as any)?.name || undefined;
+          let towerId = (verifyData?.towers as any)?.tower_id || undefined;
           let flatName = (verifyData?.flats as any)?.flat_number || undefined;
 
           const syncedProfile: ResidentProfile = {
@@ -96,6 +98,7 @@ export const useProfileStore = create<ProfileState>((set) => ({
             societyId,
             societyName,
             towerName,
+            towerId,
             flatName,
           };
 
