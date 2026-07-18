@@ -59,11 +59,30 @@ export const useProfileStore = create<ProfileState>((set) => ({
         const userId = session.user.id;
 
         // Fetch user basic profile
-        const { data: profileData } = await supabase
+        let { data: profileData } = await supabase
           .from("users")
           .select("*")
           .eq("id", userId)
           .maybeSingle();
+
+        // Fallback to guestusers table if user row is not found in public.users
+        if (!profileData) {
+          const { data: guestData } = await supabase
+            .from("guestusers")
+            .select("*")
+            .eq("id", userId)
+            .maybeSingle();
+
+          if (guestData) {
+            profileData = {
+              id: guestData.id,
+              full_name: guestData.full_name,
+              email: guestData.email,
+              phone: guestData.phone,
+              role: "Resident",
+            } as any;
+          }
+        }
 
         if (profileData) {
           // Fetch verification status

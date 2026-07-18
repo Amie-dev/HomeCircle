@@ -39,30 +39,72 @@ export function usePassesHistory(
   towerName?: string,
   flatName?: string
 ) {
+  console.log("DEBUG [usePassesHistory] Params passed:", { userId, role, societyId, towerId, towerName, flatName });
+
   return useQuery<VisitorPass[]>({
     queryKey: ['passesHistory', userId, role, societyId, towerId, towerName, flatName],
     queryFn: async () => {
-      if (!userId) return [];
+      if (!userId) {
+        console.log("DEBUG [usePassesHistory] No userId provided, returning empty list.");
+        return [];
+      }
       
       let query = supabase.from('requestpasses').select('*');
       
-      if (role === 'Resident' && societyId && flatName) {
-        const towerFilter = towerId && towerName
-          ? `or(tower_no.eq."${towerId}",tower_no.eq."${towerName}")`
-          : towerId
-            ? `tower_no.eq."${towerId}"`
-            : `tower_no.eq."${towerName}"`;
-
-        query = query.or(`user_id.eq.${userId},and(${towerFilter},flat_no.eq."${flatName}")`)
-          .eq('resident_details->>societyId', societyId);
+      if (role === 'Resident' && societyId) {
+        if (societyId !== "mock-soc-1") {
+          console.log(`DEBUG [usePassesHistory] Querying passes for society ID: ${societyId}`);
+          query = query.eq('resident_details->>societyId', societyId);
+        } else {
+          console.log("DEBUG [usePassesHistory] Mock mode (mock-soc-1) detected. Querying ALL passes from database.");
+        }
       } else {
+        console.log(`DEBUG [usePassesHistory] Querying passes created by user ID: ${userId}`);
         query = query.eq('user_id', userId);
       }
 
       const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) {
+        console.error("DEBUG [usePassesHistory] Supabase query failed:", error);
         throw new Error(error.message || 'Failed to fetch visitor passes history');
+      }
+
+      console.log(`DEBUG [usePassesHistory] Supabase returned ${data?.length || 0} passes.`);
+
+      if (role === 'Resident' && societyId && flatName) {
+        console.log("DEBUG [usePassesHistory] Filtering passes in-memory for Resident...");
+        const filtered = (data || []).filter(pass => {
+          if (societyId === "mock-soc-1") {
+            console.log(`DEBUG [usePassesHistory] Mock mode bypass. Including pass ${pass.id} (Visitor: ${pass.visitor_name})`);
+            return true; 
+          }
+          
+          const matchesUser = pass.user_id === userId;
+          
+          const passTower = (pass.tower_no || '').trim().toLowerCase();
+          const matchTower = 
+            (towerId && passTower === towerId.trim().toLowerCase()) ||
+            (towerName && passTower === towerName.trim().toLowerCase());
+            
+          const matchFlat = (pass.flat_no || '').trim().toLowerCase() === flatName.trim().toLowerCase();
+          
+          const keep = matchesUser || (matchTower && matchFlat);
+          if (!keep) {
+            console.log(`DEBUG [usePassesHistory] Filtered out pass ${pass.id}. Matches:`, {
+              matchesUser,
+              matchTower,
+              matchFlat,
+              passTower,
+              passFlat: pass.flat_no
+            });
+          } else {
+            console.log(`DEBUG [usePassesHistory] Keeping pass ${pass.id} (Visitor: ${pass.visitor_name})`);
+          }
+          return keep;
+        });
+        console.log(`DEBUG [usePassesHistory] Returning ${filtered.length} passes after filter.`);
+        return filtered as VisitorPass[];
       }
 
       return data as VisitorPass[];

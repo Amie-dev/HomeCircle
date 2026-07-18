@@ -1,20 +1,29 @@
-import React, { useState, useEffect } from "react";
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image, ImageBackground } from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { MaterialIcons } from "@expo/vector-icons";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
-import { theme } from "../../../theme";
-import { useProfileStore } from "../../../store/useProfileStore";
-import { usePassesHistory } from "../../../hooks/useRequestPasses";
-import { supabase } from "../../../../utils/supabase";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Alert, Image, ImageBackground, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { sendPushNotification } from "../../../../utils/notificationService";
+import { supabase } from "../../../../utils/supabase";
+import { usePassesHistory } from "../../../hooks/useRequestPasses";
+import { useProfileStore } from "../../../store/useProfileStore";
+import { theme } from "../../../theme";
 
 export default function VisitorsScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { profile } = useProfileStore();
   const [activeTab, setActiveTab] = useState<"approvals" | "history">("approvals");
+
+  console.log("DEBUG [visitors.tsx] Render state:", { 
+    profileId: profile?.id, 
+    role: profile?.role,
+    societyId: profile?.societyId, 
+    towerId: profile?.towerId,
+    towerName: profile?.towerName,
+    flatName: profile?.flatName 
+  });
 
   // Fetch visitor history/live data
   const { data: historyList = [], isLoading } = usePassesHistory(
@@ -25,6 +34,8 @@ export default function VisitorsScreen() {
     profile?.towerName,
     profile?.flatName
   );
+
+  console.log("DEBUG [visitors.tsx] Passes history list count:", historyList.length, "isLoading:", isLoading);
 
   // Subscribe to realtime updates for requestpasses table
   useEffect(() => {
@@ -53,12 +64,12 @@ export default function VisitorsScreen() {
 
   // Mutation to approve/reject passes
   const updatePassStatusMutation = useMutation({
-    mutationFn: async ({ passId, status, guestId }: { passId: string; status: "Approved" | "Rejected"; guestId: string }) => {
+    mutationFn: async ({ passId, status, visitorEmail }: { passId: string; status: "Approved" | "Rejected"; visitorEmail: string }) => {
       const { error } = await supabase
         .from("requestpasses")
         .update({ status })
         .eq("id", passId);
-      
+
       if (error) throw error;
 
       const title = status === "Approved" ? "Pass Approved 🎟️" : "Pass Rejected ❌";
@@ -67,39 +78,41 @@ export default function VisitorsScreen() {
         : "Your request to visit was rejected by the resident.";
       const screen = "/request-pass";
 
-      // Fetch the guest's push token and send push notification
+      // Fetch the guest's push token from guestusers table using email
       try {
-        const { data: userData } = await supabase
-          .from("users")
-          .select("notification_token")
-          .eq("id", guestId)
+        const { data: guestData } = await supabase
+          .from("guestusers")
+          .select("id, notification_token")
+          .eq("email", visitorEmail)
           .maybeSingle();
 
-        if (userData?.notification_token) {
-          await sendPushNotification({
-            token: userData.notification_token,
-            title,
-            body,
-            data: {
+        if (guestData) {
+          if (guestData.notification_token) {
+            await sendPushNotification({
+              token: guestData.notification_token,
+              title,
+              body,
+              data: {
+                screen,
+                url: screen,
+              },
+            });
+          }
+
+          // Notify the guest in push_notifications table
+          await supabase
+            .from("push_notifications")
+            .insert({
+              user_id: guestData.id,
+              title,
+              body,
               screen,
-              url: screen,
-            },
-          });
+              status: "Sent",
+            });
         }
       } catch (pushErr) {
         console.warn("Failed to send push notification to guest:", pushErr);
       }
-
-      // Notify the guest in push_notifications table
-      await supabase
-        .from("push_notifications")
-        .insert({
-          user_id: guestId,
-          title,
-          body,
-          screen,
-          status: "Sent",
-        });
     },
     onSuccess: (_, variables) => {
       Alert.alert("Success", `Visitor pass has been ${variables.status.toLowerCase()}.`);
@@ -110,8 +123,8 @@ export default function VisitorsScreen() {
     }
   });
 
-  const handleAction = (passId: string, status: "Approved" | "Rejected", guestId: string) => {
-    updatePassStatusMutation.mutate({ passId, status, guestId });
+  const handleAction = (passId: string, status: "Approved" | "Rejected", visitorEmail: string) => {
+    updatePassStatusMutation.mutate({ passId, status, visitorEmail });
   };
 
   const getVisitorIcon = (designation: string) => {
@@ -160,6 +173,7 @@ export default function VisitorsScreen() {
   // Filter lists from DB
   const pendingPasses = historyList.filter(pass => pass.status === "Pending");
   const upcomingGuests = historyList.filter(pass => pass.status === "Approved" && new Date(pass.expiry_time) > new Date());
+  const verifiedVisitors = historyList.filter(pass => pass.status === "Verified");
 
   // Visual mock data matching HTML exactly
   const mockPendingPasses = [
@@ -194,7 +208,7 @@ export default function VisitorsScreen() {
 
   return (
     <View style={styles.outerContainer}>
-      <StatusBar style="light" />
+      <StatusBar style='dark' />
 
       {/* Top App Bar */}
       <View style={styles.topAppBar}>
@@ -213,6 +227,14 @@ export default function VisitorsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        {profile.societyId === "mock-soc-1" && (
+          <View style={styles.mockBanner}>
+            <MaterialIcons name="warning" size={16} color={theme.colors.error} />
+            <Text style={styles.mockBannerText}>
+              Offline Mock Mode. Please log out and register online to receive live visitor requests.
+            </Text>
+          </View>
+        )}
         {/* Custom Tab Switcher inside ScrollView */}
         <View style={styles.tabContainer}>
           <TouchableOpacity
@@ -277,7 +299,7 @@ export default function VisitorsScreen() {
                           if (isMock) {
                             Alert.alert("Action Mocked", "Rejected visitor via mock demo!");
                           } else {
-                            handleAction(item.id, "Rejected", item.user_id);
+                            handleAction(item.id, "Rejected", item.visitor_email);
                           }
                         }}
                       >
@@ -291,7 +313,7 @@ export default function VisitorsScreen() {
                           if (isMock) {
                             Alert.alert("Action Mocked", "Approved visitor via mock demo!");
                           } else {
-                            handleAction(item.id, "Approved", item.user_id);
+                            handleAction(item.id, "Approved", item.visitor_email);
                           }
                         }}
                       >
@@ -347,7 +369,42 @@ export default function VisitorsScreen() {
               </View>
             )}
 
-            {/* Safety Banner */}
+            {/* Visitors Inside */}
+            <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 12 }]}>Active Visitors (Inside)</Text>
+            {verifiedVisitors.length > 0 ? (
+              <View style={styles.upcomingList}>
+                {verifiedVisitors.map((item: any) => {
+                  return (
+                    <View key={item.id} style={[styles.upcomingCard, { borderColor: "#2e7d32", borderWidth: 1 }]}>
+                      <View style={styles.upcomingLeft}>
+                        <View style={[styles.upcomingIconBox, { backgroundColor: "rgba(46, 125, 50, 0.1)" }]}>
+                          <MaterialIcons
+                            name="check-circle"
+                            size={20}
+                            color="#2e7d32"
+                          />
+                        </View>
+                        <View>
+                          <Text style={styles.upcomingNameText}>{item.visitor_name}</Text>
+                          <Text style={styles.upcomingDescText}>{item.designation} • Inside Society</Text>
+                        </View>
+                      </View>
+                      <View style={styles.upcomingRight}>
+                        <Text style={[styles.validLabel, { color: "#2e7d32" }]}>Checked In At</Text>
+                        <Text style={styles.validTime}>
+                          {formatTime(item.verified_at || item.created_at)}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={styles.emptyPendingCard}>
+                <MaterialIcons name="home" size={32} color={theme.colors.outline} />
+                <Text style={styles.emptyPendingText}>No active visitors inside your unit.</Text>
+              </View>
+            )}
             <View style={styles.bannerCard}>
               <ImageBackground
                 source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuCDRxlvqhh6kUzegIEZ4Rqg5Rr-aEY7Sli6EslMQZHaceiGmGGIIqODqnfjr5PyytQKkUwf1QI_lbVpIxhX1r_MgJ8Mthu9CaQ4YanEQs-YNYmSZrqmp028mB0pBcWiqAJV5CQFVdeTKMFnBbdP_eYh9vWsIOuU7v1M_KogjB5kI5E5E7KlrMJzqjjJ160B8M9Zya9uLZ4vAz2tbpeyTQLTBECRvNhgwwSCYi3gWDrrvwaOC0U7F0ZqwA" }}
@@ -796,5 +853,22 @@ const styles = StyleSheet.create({
   emptyPendingText: {
     ...theme.typography.bodyMd,
     color: theme.colors.outline,
+  },
+  mockBanner: {
+    backgroundColor: "rgba(186, 26, 26, 0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(186, 26, 26, 0.3)",
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  mockBannerText: {
+    fontSize: 12,
+    color: theme.colors.error,
+    flex: 1,
+    fontWeight: "500",
   },
 });
