@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -7,11 +7,14 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { theme } from "../../../theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { supabase } from "../../../../utils/supabase";
+import { useProfileStore } from "../../../store/useProfileStore";
 
 interface Complaint {
   id: string;
@@ -20,63 +23,137 @@ interface Complaint {
   content: string;
   timeAgo: string;
   severity: "High" | "Medium" | "Low";
-  status: "Pending" | "In Progress" | "Logged";
+  status: "Pending" | "In Progress" | "Resolved" | "Closed";
   residentName: string;
   residentUnit: string;
 }
-
-const mockComplaints: Complaint[] = [
-  {
-    id: "c-1",
-    title: "Kitchen Pipe Burst",
-    category: "Plumbing",
-    content: "Heavy leakage in the main kitchen sink area causing water accumulation in the living room. Requires immediate intervention.",
-    timeAgo: "2h ago",
-    severity: "High",
-    status: "Pending",
-    residentName: "James Smith",
-    residentUnit: "Tower A - 402",
-  },
-  {
-    id: "c-2",
-    title: "Lobby Light Flickering",
-    category: "Electrical",
-    content: "Multiple LED panels in the Tower B lobby are flickering, creating discomfort for residents during evening hours.",
-    timeAgo: "5h ago",
-    severity: "Medium",
-    status: "In Progress",
-    residentName: "Rita Wilson",
-    residentUnit: "Tower B - 105",
-  },
-  {
-    id: "c-3",
-    title: "Broken Gate Sensor",
-    category: "Security",
-    content: "The pedestrian gate sensor on the North entrance is not responding to RFID tags consistently.",
-    timeAgo: "Yesterday",
-    severity: "Low",
-    status: "Logged",
-    residentName: "Harsh Kapoor",
-    residentUnit: "Tower C - 801",
-  },
-  {
-    id: "c-4",
-    title: "Stairwell Trash",
-    category: "Cleaning",
-    content: "Construction debris left in the emergency stairwell of Tower D, floors 4 through 6.",
-    timeAgo: "1d ago",
-    severity: "Medium",
-    status: "Pending",
-    residentName: "Amy Lee",
-    residentUnit: "Tower D - 502",
-  },
-];
 
 export default function OpenComplaints() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState<string>("All");
+  const { profile } = useProfileStore();
+
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchComplaints = async () => {
+    if (!profile?.societyId) return;
+    try {
+      const { data, error } = await supabase
+        .from("tickets")
+        .select(`
+          *,
+          guestusers (
+            full_name,
+            email,
+            phone,
+            societymembers (
+              towers ( name ),
+              flats ( flat_number )
+            )
+          )
+        `)
+        .eq("society_id", profile.societyId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        setComplaints(
+          data.map((t: any) => {
+            const member = t.guestusers?.societymembers?.[0];
+            const towerName = member?.towers?.name || "";
+            const flatNo = member?.flats?.flat_number || "";
+            const unitText = towerName && flatNo ? `Tower ${towerName} - ${flatNo}` : "External/Staff";
+            
+            // Format time ago or date
+            const createdDate = new Date(t.created_at);
+            const diffMs = Date.now() - createdDate.getTime();
+            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+            const diffDays = Math.floor(diffHours / 24);
+            const timeAgo = diffDays > 0 ? `${diffDays}d ago` : diffHours > 0 ? `${diffHours}h ago` : "Just now";
+
+            return {
+              id: t.id,
+              title: t.title,
+              category: t.category,
+              content: t.description,
+              timeAgo,
+              severity: t.is_urgent ? "High" : "Low",
+              status: t.status,
+              residentName: t.guestusers?.full_name || "Unknown Resident",
+              residentUnit: unitText,
+            };
+          })
+        );
+      }
+    } catch (err: any) {
+      console.error("Error fetching complaints:", err.message);
+    }
+  };
+
+  const updateComplaintStatus = async (id: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from("tickets")
+        .update({
+          status: newStatus,
+          resolved_at: newStatus === "Resolved" ? new Date().toISOString() : null,
+        })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      Alert.alert("Success", `Complaint status updated to ${newStatus}`);
+      fetchComplaints();
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to update complaint status");
+    }
+  };
+
+  const handleRaiseComplaint = () => {
+    Alert.alert(
+      "Log Test Complaint",
+      "Would you like to log a test plumbing complaint?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Create",
+          onPress: async () => {
+            if (!profile?.societyId) return;
+            try {
+              const { error } = await supabase
+                .from("tickets")
+                .insert({
+                  society_id: profile.societyId,
+                  user_id: profile.id,
+                  title: "Test Plumbing Issue",
+                  description: "Water leaking in common bathroom area.",
+                  category: "Plumbing",
+                  is_urgent: false,
+                  status: "Pending",
+                });
+
+              if (error) throw error;
+              Alert.alert("Success", "Test complaint logged successfully!");
+              fetchComplaints();
+            } catch (err: any) {
+              Alert.alert("Error", err.message || "Failed to log complaint");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  useEffect(() => {
+    if (profile?.societyId) {
+      setLoading(true);
+      fetchComplaints().finally(() => setLoading(false));
+    }
+  }, [profile?.societyId]);
 
   const getCategoryIcon = (cat: string) => {
     switch (cat) {
@@ -124,7 +201,9 @@ export default function OpenComplaints() {
         return "rgba(186, 26, 26, 0.1)";
       case "In Progress":
         return "rgba(0, 106, 97, 0.1)";
-      case "Logged":
+      case "Resolved":
+        return "rgba(0, 106, 97, 0.1)";
+      case "Closed":
       default:
         return theme.colors.surfaceContainerHigh;
     }
@@ -136,13 +215,15 @@ export default function OpenComplaints() {
         return theme.colors.error;
       case "In Progress":
         return theme.colors.secondary;
-      case "Logged":
+      case "Resolved":
+        return theme.colors.secondary;
+      case "Closed":
       default:
         return theme.colors.onSurfaceVariant;
     }
   };
 
-  const filteredComplaints = mockComplaints.filter((complaint) => {
+  const filteredComplaints = complaints.filter((complaint) => {
     const matchesSearch =
       complaint.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       complaint.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -158,8 +239,23 @@ export default function OpenComplaints() {
 
   const handleCardPress = (complaint: Complaint) => {
     Alert.alert(
-      "Complaint Details",
-      `Title: ${complaint.title}\nResident: ${complaint.residentName} (${complaint.residentUnit})\nSeverity: ${complaint.severity}\nStatus: ${complaint.status}\n\nDetails: ${complaint.content}`
+      "Complaint Action",
+      `Title: ${complaint.title}\nResident: ${complaint.residentName} (${complaint.residentUnit})\n\nDetails: ${complaint.content}`,
+      [
+        { text: "Cancel", style: "cancel" },
+        complaint.status !== "In Progress" && complaint.status !== "Resolved" && complaint.status !== "Closed" ? {
+          text: "Mark In Progress",
+          onPress: () => updateComplaintStatus(complaint.id, "In Progress")
+        } : null,
+        complaint.status !== "Resolved" && complaint.status !== "Closed" ? {
+          text: "Mark Resolved",
+          onPress: () => updateComplaintStatus(complaint.id, "Resolved")
+        } : null,
+        complaint.status !== "Closed" ? {
+          text: "Mark Closed",
+          onPress: () => updateComplaintStatus(complaint.id, "Closed")
+        } : null,
+      ].filter(Boolean) as any
     );
   };
 
@@ -303,7 +399,7 @@ export default function OpenComplaints() {
       <TouchableOpacity
         style={[styles.fab, { bottom: insets.bottom + 24 }]}
         activeOpacity={0.8}
-        onPress={() => Alert.alert("Raise Complaint", "Log a new complaint entry.")}
+        onPress={handleRaiseComplaint}
       >
         <MaterialIcons name="add" size={28} color={theme.colors.onSecondary} />
       </TouchableOpacity>

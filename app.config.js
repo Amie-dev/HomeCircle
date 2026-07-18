@@ -60,6 +60,7 @@ const config = {
       "android.permission.CAMERA",
       "android.permission.RECORD_AUDIO",
     ],
+    "googleServicesFile": process.env.GOOGLE_SERVICES_JSON
   },
 
   web: {

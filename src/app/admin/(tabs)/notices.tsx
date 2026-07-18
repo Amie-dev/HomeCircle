@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -14,6 +14,8 @@ import {
 import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../../theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { supabase } from "../../../../utils/supabase";
+import { useProfileStore } from "../../../store/useProfileStore";
 
 interface Notice {
   id: string;
@@ -38,57 +40,12 @@ interface Poll {
 export default function AdminNoticesAndPolls() {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<"Notices" | "Polls">("Notices");
+  const { profile } = useProfileStore();
 
   // State Lists
-  const [notices, setNotices] = useState<Notice[]>([
-    {
-      id: "n-1",
-      title: "Water Supply Maintenance",
-      category: "Maintenance",
-      content: "Water supply will be suspended tomorrow from 10:00 AM to 02:00 PM for tank cleaning operations. Please store water beforehand.",
-      date: "Today, 08:30 AM",
-      author: "Admin Team",
-    },
-    {
-      id: "n-2",
-      title: "Annual General Meeting",
-      category: "Event",
-      content: "The annual general meeting of HomeCircle residents will take place this Sunday at 05:00 PM in the central Clubhouse.",
-      date: "Yesterday",
-      author: "President, HOA",
-    },
-    {
-      id: "n-3",
-      title: "New Parking Guidelines",
-      category: "Security",
-      content: "Please ensure all guest vehicles are parked only in designated guest slots. Unregistered vehicles will be locked.",
-      date: "3 days ago",
-      author: "Security Admin",
-    },
-  ]);
-
-  const [polls, setPolls] = useState<Poll[]>([
-    {
-      id: "p-1",
-      question: "Should we upgrade the Clubhouse Gym equipment?",
-      optionA: "Yes, fully upgrade",
-      optionA_votes: 68,
-      optionB: "No, keep current",
-      optionB_votes: 28,
-      totalVotes: 96,
-      isActive: true,
-    },
-    {
-      id: "p-2",
-      question: "Should we restrict weekend delivery services after 08:00 PM?",
-      optionA: "Restrict",
-      optionA_votes: 84,
-      optionB: "Do not restrict",
-      optionB_votes: 66,
-      totalVotes: 150,
-      isActive: false,
-    },
-  ]);
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [polls, setPolls] = useState<Poll[]>([]);
+  const [loading, setLoading] = useState(false);
 
   // Modal states
   const [noticeModalVisible, setNoticeModalVisible] = useState(false);
@@ -103,54 +60,210 @@ export default function AdminNoticesAndPolls() {
   const [newPollOptionA, setNewPollOptionA] = useState("");
   const [newPollOptionB, setNewPollOptionB] = useState("");
 
-  const handleCreateNotice = () => {
+  const mapDbNoticeToFrontend = (item: any): Notice => {
+    const match = item.description.match(/^\[(Maintenance|Security|Event|General)\] ([\s\S]*)$/);
+    if (match) {
+      return {
+        id: item.id,
+        title: item.title,
+        category: match[1] as any,
+        content: match[2],
+        date: new Date(item.created_at).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit"
+        }),
+        author: "Admin Team",
+      };
+    }
+    return {
+      id: item.id,
+      title: item.title,
+      category: (item.category === "Urgent" ? "Security" : "General") as any,
+      content: item.description,
+      date: new Date(item.created_at).toLocaleDateString(),
+      author: "Admin Team",
+    };
+  };
+
+  const fetchNotices = async () => {
+    if (!profile?.societyId) return;
+    try {
+      const { data, error } = await supabase
+        .from("notices")
+        .select("*")
+        .eq("society_id", profile.societyId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      if (data) {
+        setNotices(data.map(mapDbNoticeToFrontend));
+      }
+    } catch (err: any) {
+      console.error("Error fetching notices:", err.message);
+    }
+  };
+
+  const fetchPolls = async () => {
+    if (!profile?.societyId) return;
+    try {
+      const { data: pollsData, error: pollsErr } = await supabase
+        .from("polls")
+        .select("*")
+        .eq("society_id", profile.societyId)
+        .order("created_at", { ascending: false });
+
+      if (pollsErr) throw pollsErr;
+
+      if (pollsData && pollsData.length > 0) {
+        const pollIds = pollsData.map((p: any) => p.id);
+        const { data: votesData, error: votesErr } = await supabase
+          .from("poll_votes")
+          .select("poll_id, selected_option")
+          .in("poll_id", pollIds);
+
+        if (votesErr) throw votesErr;
+
+        const votesByPoll: Record<string, { total: number; optA: number; optB: number }> = {};
+        pollIds.forEach((id: string) => {
+          votesByPoll[id] = { total: 0, optA: 0, optB: 0 };
+        });
+
+        if (votesData) {
+          votesData.forEach((vote: any) => {
+            const p = pollsData.find((pl: any) => pl.id === vote.poll_id);
+            if (p) {
+              const optA = p.options[0] || "Yes";
+              const optB = p.options[1] || "No";
+              votesByPoll[vote.poll_id].total += 1;
+              if (vote.selected_option === optA) {
+                votesByPoll[vote.poll_id].optA += 1;
+              } else if (vote.selected_option === optB) {
+                votesByPoll[vote.poll_id].optB += 1;
+              }
+            }
+          });
+        }
+
+        const mappedPolls: Poll[] = pollsData.map((p: any) => {
+          const stats = votesByPoll[p.id] || { total: 0, optA: 0, optB: 0 };
+          const isExpired = new Date(p.expires_at).getTime() < Date.now();
+          return {
+            id: p.id,
+            question: p.question,
+            optionA: p.options[0] || "Yes",
+            optionA_votes: stats.optA,
+            optionB: p.options[1] || "No",
+            optionB_votes: stats.optB,
+            totalVotes: stats.total,
+            isActive: !isExpired,
+          };
+        });
+
+        setPolls(mappedPolls);
+      } else {
+        setPolls([]);
+      }
+    } catch (err: any) {
+      console.error("Error fetching polls:", err.message);
+    }
+  };
+
+  useEffect(() => {
+    if (profile?.societyId) {
+      setLoading(true);
+      Promise.all([fetchNotices(), fetchPolls()]).finally(() => setLoading(false));
+    }
+  }, [profile?.societyId]);
+
+  const handleCreateNotice = async () => {
     if (!newNoticeTitle.trim() || !newNoticeContent.trim()) {
       Alert.alert("Missing Fields", "Please enter notice title and details.");
       return;
     }
+    if (!profile?.societyId) return;
 
-    const created: Notice = {
-      id: `n-${Date.now()}`,
-      title: newNoticeTitle.trim(),
-      category: newNoticeCategory,
-      content: newNoticeContent.trim(),
-      date: "Just now",
-      author: "Admin Console",
-    };
+    try {
+      const formattedDesc = `[${newNoticeCategory}] ${newNoticeContent.trim()}`;
+      const dbCategory = (newNoticeCategory === "Security" || newNoticeCategory === "Maintenance") ? "Urgent" : "General";
 
-    setNotices([created, ...notices]);
-    setNoticeModalVisible(false);
-    // Reset form
-    setNewNoticeTitle("");
-    setNewNoticeCategory("General");
-    setNewNoticeContent("");
-    Alert.alert("Success", "Notice posted to community successfully!");
+      const { data, error } = await supabase
+        .from("notices")
+        .insert({
+          society_id: profile.societyId,
+          title: newNoticeTitle.trim(),
+          description: formattedDesc,
+          category: dbCategory,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        const newNotice = mapDbNoticeToFrontend(data);
+        setNotices([newNotice, ...notices]);
+      }
+
+      setNoticeModalVisible(false);
+      // Reset form
+      setNewNoticeTitle("");
+      setNewNoticeCategory("General");
+      setNewNoticeContent("");
+      Alert.alert("Success", "Notice posted to community successfully!");
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to create notice.");
+    }
   };
 
-  const handleCreatePoll = () => {
+  const handleCreatePoll = async () => {
     if (!newPollQuestion.trim() || !newPollOptionA.trim() || !newPollOptionB.trim()) {
       Alert.alert("Missing Fields", "Please enter poll question and both options.");
       return;
     }
+    if (!profile?.societyId) return;
 
-    const created: Poll = {
-      id: `p-${Date.now()}`,
-      question: newPollQuestion.trim(),
-      optionA: newPollOptionA.trim(),
-      optionA_votes: 0,
-      optionB: newPollOptionB.trim(),
-      optionB_votes: 0,
-      totalVotes: 0,
-      isActive: true,
-    };
+    try {
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7); // Default expiry 7 days
 
-    setPolls([created, ...polls]);
-    setPollModalVisible(false);
-    // Reset form
-    setNewPollQuestion("");
-    setNewPollOptionA("");
-    setNewPollOptionB("");
-    Alert.alert("Success", "Poll created and opened for voting!");
+      const { data, error } = await supabase
+        .from("polls")
+        .insert({
+          society_id: profile.societyId,
+          question: newPollQuestion.trim(),
+          options: [newPollOptionA.trim(), newPollOptionB.trim()],
+          expires_at: expiresAt.toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        const newPoll: Poll = {
+          id: data.id,
+          question: data.question,
+          optionA: data.options[0],
+          optionA_votes: 0,
+          optionB: data.options[1],
+          optionB_votes: 0,
+          totalVotes: 0,
+          isActive: true,
+        };
+        setPolls([newPoll, ...polls]);
+      }
+
+      setPollModalVisible(false);
+      // Reset form
+      setNewPollQuestion("");
+      setNewPollOptionA("");
+      setNewPollOptionB("");
+      Alert.alert("Success", "Poll created and opened for voting!");
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to create poll.");
+    }
   };
 
   const getCategoryColor = (cat: "Maintenance" | "Security" | "Event" | "General") => {

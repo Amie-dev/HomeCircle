@@ -16,6 +16,7 @@ import { theme } from "../../../theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Notifications from "expo-notifications";
 import { useResidentVerifications, useUpdateResidentVerification } from "../../../hooks/useRequestResident";
+import { useProfileStore } from "../../../store/useProfileStore";
 
 // Configure notification behavior for when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -77,15 +78,16 @@ const mockResidents: Resident[] = [
 
 export default function ManageResidents() {
   const insets = useSafeAreaInsets();
+  const { profile } = useProfileStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState<"All" | "Verified" | "Pending" | "Staff">("All");
 
   // Query and mutation hooks for database verifications
-  const { data: dbVerifications, error: dbError } = useResidentVerifications();
+  const { data: dbVerifications, error: dbError } = useResidentVerifications(profile?.societyId);
   const { mutateAsync: updateVerification } = useUpdateResidentVerification();
 
-  // Manage resident list state locally (combines database & mock fallback)
-  const [residents, setResidents] = useState<Resident[]>(mockResidents);
+  // Manage resident list state locally
+  const [residents, setResidents] = useState<Resident[]>([]);
 
   // Modal State
   const [selectedResident, setSelectedResident] = useState<Resident | null>(null);
@@ -105,19 +107,20 @@ export default function ManageResidents() {
 
   // Update local residents state when DB verifications change
   useEffect(() => {
-    if (dbVerifications && dbVerifications.length > 0) {
+    if (dbVerifications) {
       const mapped: Resident[] = dbVerifications.map((v) => ({
         id: v.id,
         userId: v.user_id,
         name: v.guestusers?.full_name || "Unknown Resident",
-        unit: `${v.verification_details?.towerName || ""}, ${v.verification_details?.flatNumber || ""}`,
-        status: (v.is_verified ? "Verified" : "Pending") as "Verified" | "Pending" | "Staff",
+        unit: v.role === "Guard" 
+          ? "Security Guard" 
+          : `${v.verification_details?.towerName || ""}, ${v.verification_details?.flatNumber || ""}`,
+        status: v.role === "Guard"
+          ? "Staff"
+          : (v.is_verified ? "Verified" : "Pending"),
         avatar: null,
       }));
-      // Merge database records with mocks
-      setResidents([...mapped, ...mockResidents]);
-    } else {
-      setResidents(mockResidents);
+      setResidents(mapped);
     }
   }, [dbVerifications]);
 

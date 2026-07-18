@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -7,305 +7,212 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../../theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { supabase } from "../../../../utils/supabase";
+import { useProfileStore } from "../../../store/useProfileStore";
 
 export default function AdminReports() {
   const insets = useSafeAreaInsets();
+  const { profile } = useProfileStore();
   const [trendsFilter, setTrendsFilter] = useState("30 Days");
+  const [loading, setLoading] = useState(false);
+  const [metrics, setMetrics] = useState({
+    monthlyVisitors: 0,
+    sparkline: [10, 10, 10, 10, 10, 10, 10],
+    avgResolutionHours: "0.0",
+    resolutionProgress: "0%",
+  });
 
-  const visitorsSparkline = [30, 20, 50, 40, 80, 60, 100];
+  const fetchReportData = async () => {
+    if (!profile?.societyId) return;
+    try {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const { data: visitorData, error: visErr } = await supabase
+        .from("visitor_logs")
+        .select("created_at, requestpasses!inner(*)")
+        .gte("created_at", thirtyDaysAgo.toISOString())
+        .eq("requestpasses.resident_details->>societyId", profile.societyId);
 
-  const visitorTrendData = {
-    "30 Days": [40, 55, 45, 70, 60, 85, 90, 50, 42, 58, 75, 65, 95],
-    "90 Days": [60, 40, 75, 50, 90, 80, 100, 70, 65, 80, 55, 75, 85],
+      if (visErr) throw visErr;
+
+      const monthlyCount = visitorData?.length || 0;
+      const sparklineCounts = [0, 0, 0, 0, 0, 0, 0];
+      if (visitorData && visitorData.length > 0) {
+        visitorData.forEach((log: any) => {
+          const logDate = new Date(log.created_at);
+          const diffDays = Math.floor((Date.now() - logDate.getTime()) / (1000 * 60 * 60 * 24));
+          const chunkIndex = Math.min(6, Math.floor(diffDays / 4.3));
+          sparklineCounts[6 - chunkIndex] += 1;
+        });
+      }
+      const maxSparkVal = Math.max(...sparklineCounts, 1);
+      const normalizedSparkline = sparklineCounts.map((v) => Math.round((v / maxSparkVal) * 100) || 10);
+
+      const { data: ticketsData, error: tickErr } = await supabase
+        .from("tickets")
+        .select("created_at, resolved_at, status")
+        .eq("society_id", profile.societyId);
+
+      if (tickErr) throw tickErr;
+
+      let avgHours = 0;
+      let progressStr = "0%";
+      if (ticketsData && ticketsData.length > 0) {
+        const resolved = ticketsData.filter((t: any) => t.status === "Resolved" || t.status === "Closed");
+        const withTimes = ticketsData.filter((t: any) => t.resolved_at);
+
+        if (withTimes.length > 0) {
+          let totalMs = 0;
+          withTimes.forEach((t: any) => {
+            const start = new Date(t.created_at).getTime();
+            const end = new Date(t.resolved_at).getTime();
+            totalMs += (end - start);
+          });
+          avgHours = totalMs / (1000 * 60 * 60 * withTimes.length);
+        }
+
+        const pct = Math.round((resolved.length / ticketsData.length) * 100);
+        progressStr = `${pct}%`;
+      }
+
+      setMetrics({
+        monthlyVisitors: monthlyCount,
+        sparkline: normalizedSparkline,
+        avgResolutionHours: avgHours.toFixed(1),
+        resolutionProgress: progressStr,
+      });
+    } catch (err: any) {
+      console.error("Error loading reports data:", err.message);
+    }
   };
 
-  const currentTrend = visitorTrendData[trendsFilter as keyof typeof visitorTrendData];
+  useEffect(() => {
+    if (profile?.societyId) {
+      setLoading(true);
+      fetchReportData().finally(() => setLoading(false));
+    }
+  }, [profile?.societyId]);
 
   const handleExport = () => {
-    Alert.alert("Export Report", "Exporting monthly society analytics as PDF...");
+    Alert.alert(
+      "Export Report",
+      `Generating analytical PDF report for ${profile?.societyName || "Society"}:\n- Monthly Visitors: ${metrics.monthlyVisitors}\n- Avg. Complaint Resolution: ${metrics.avgResolutionHours} hrs\n- Complaint Resolution Rate: ${metrics.resolutionProgress}\n\nExporting as PDF...`
+    );
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Top App Bar */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.headerTitle}>Reports</Text>
         </View>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => Alert.alert("Filter", "Open reports filter options.")}
-        >
-          <MaterialIcons name="filter-list" size={24} color={theme.colors.primary} />
+        <TouchableOpacity style={styles.headerButton} onPress={() => fetchReportData()}>
+          <MaterialIcons name="refresh" size={24} color={theme.colors.primary} />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Quick Metrics */}
-        <View style={styles.metricsContainer}>
-          {/* Card 1: Monthly Visitors */}
-          <View style={styles.metricCard}>
-            <View style={styles.metricHeader}>
-              <Text style={styles.metricLabel}>Monthly Visitors</Text>
-              <View style={styles.metricTrendBadge}>
-                <Text style={styles.metricTrendText}>+12.5%</Text>
-              </View>
-            </View>
-            <View style={styles.metricValueContainer}>
-              <Text style={styles.metricValue}>2,482</Text>
-              <Text style={styles.metricUnit}>entries</Text>
-            </View>
-            {/* Sparkline */}
-            <View style={styles.sparklineContainer}>
-              {visitorsSparkline.map((h, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.sparklineBar,
-                    { height: `${h}%`, opacity: i === visitorsSparkline.length - 1 ? 1 : 0.4 },
-                  ]}
-                />
-              ))}
-            </View>
+        {loading ? (
+          <View style={{ padding: 40, alignItems: "center" }}>
+            <ActivityIndicator size="large" color={theme.colors.secondary} />
           </View>
-
-          {/* Card 2: Avg. Resolution Time */}
-          <View style={styles.metricCard}>
-            <View style={styles.metricHeader}>
-              <Text style={styles.metricLabel}>Avg. Resolution</Text>
-              <MaterialIcons name="timer" size={16} color={theme.colors.onSurfaceVariant} />
-            </View>
-            <View style={styles.metricValueContainer}>
-              <Text style={styles.metricValue}>4.2</Text>
-              <Text style={styles.metricUnit}>hours</Text>
-            </View>
-            <Text style={styles.metricSubText}>18% faster than last month</Text>
-            {/* Progress Bar */}
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: "82%" }]} />
-            </View>
-          </View>
-
-          {/* Card 3: Amenity Utilization */}
-          <View style={styles.metricCard}>
-            <View style={styles.metricHeader}>
-              <Text style={styles.metricLabel}>Amenity Utilization</Text>
-              <MaterialIcons name="fitness-center" size={16} color={theme.colors.onSurfaceVariant} />
-            </View>
-            <View style={styles.metricValueContainer}>
-              <Text style={styles.metricValue}>78%</Text>
-              <Text style={styles.metricUnit}>capacity</Text>
-            </View>
-            {/* Overlapping Faces */}
-            <View style={styles.overlappingFaces}>
-              <Image
-                style={[styles.faceImage, { zIndex: 3 }]}
-                source={{
-                  uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuDekHwOSTz65HqMhS4YVqD6p_UrGfMTuxtV4oQb7CEadTyuFiumofl8Jt6Pf_N16v8qLtY1v9xcZuH6--E59y3nRyN1tPu0XEWzc7IXuamU5b6voGKWOsLJ64jJLcNDmaVgoDmIgkzOxSAOXWVj6C5yLW2pQ5pSNKDGqpYCaoJQdumOcJkieZNItOZb6-TTvBx-zrm2autj2qGUvS8nt0HaGHLst8SuuHrfPVfKlOoQSEdTUrobHHg64g",
-                }}
-              />
-              <Image
-                style={[styles.faceImage, { left: 16, zIndex: 2 }]}
-                source={{
-                  uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuCTqtHw72gRg822uOifpNCwmTel1UbNJcawcMIr3jZU8Lx_UanbTKJfRLnm7oiYT258ZWTuRBVLWi1KA-H63vxy47jQB8ScYJCR-HoifNpN3SPNKNzq7Xfl4lbgnJsFbLWJhXlFDs2JvPw-5RnLWfTuP2SwPEPz_SRpeQBqfHBeNRxyv5VrurFkImhNPbFzvGvLNUEyqkWfy2QNd7NyLFLDc3CfQEDOZzIPxKIvgW9teLCg2zTi-hHi9Q",
-                }}
-              />
-              <Image
-                style={[styles.faceImage, { left: 32, zIndex: 1 }]}
-                source={{
-                  uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuBgIoS23TtUQwFtfSzB8S54q17BZvUKIkZ96SePWKqtPPRPGyakyVo6CvpIn8ayJV5lz8K3sr1vIdFx7awOc8HRxQltx26SDvTeKzetXnnBSRNty49-SsaoTMOQ9nFfrTiB2gZCa7DZvoX8cN-Sv8FkmDgzL_L0QTVXweMCTWV_ChJFpW8iiXmz70jAGZpcmcq7h5tSl9f3vpCX3rWXoM_JPEEyzOFjzx5gVxkXqoAqeV-O2HnifS_tKg",
-                }}
-              />
-              <View style={[styles.faceCounter, { left: 48 }]}>
-                <Text style={styles.faceCounterText}>+42</Text>
+        ) : (
+          <>
+            <View style={styles.metricsContainer}>
+              <View style={styles.metricCard}>
+                <View style={styles.metricHeader}>
+                  <Text style={styles.metricLabel}>Monthly Visitors</Text>
+                  <View style={styles.metricTrendBadge}>
+                    <Text style={styles.metricTrendText}>Last 30d</Text>
+                  </View>
+                </View>
+                <View style={styles.metricValueContainer}>
+                  <Text style={styles.metricValue}>{metrics.monthlyVisitors}</Text>
+                  <Text style={styles.metricUnit}>entries</Text>
+                </View>
+                <View style={styles.sparklineContainer}>
+                  {metrics.sparkline.map((h, i) => (
+                    <View
+                      key={i}
+                      style={[
+                        styles.sparklineBar,
+                        { height: `${h}%`, opacity: i === metrics.sparkline.length - 1 ? 1 : 0.4 },
+                      ]}
+                    />
+                  ))}
+                </View>
               </View>
-            </View>
-          </View>
-        </View>
 
-        {/* Visitor Trends Card */}
-        <View style={styles.trendsCard}>
-          <View style={styles.trendsHeader}>
-            <Text style={styles.trendsTitle}>Visitor Trends</Text>
-            <View style={styles.toggleContainer}>
-              {(["30 Days", "90 Days"] as const).map((filter) => {
-                const isActive = trendsFilter === filter;
-                return (
-                  <TouchableOpacity
-                    key={filter}
-                    style={[styles.toggleButton, isActive && styles.toggleButtonActive]}
-                    onPress={() => setTrendsFilter(filter)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.toggleText, isActive && styles.toggleTextActive]}>
-                      {filter}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-
-          <View style={styles.chartBarsContainer}>
-            {currentTrend.map((h, i) => (
-              <View key={i} style={styles.trendBarWrapper}>
-                <View
-                  style={[
-                    styles.trendBar,
-                    {
-                      height: `${h}%`,
-                      backgroundColor: i === currentTrend.length - 1 ? theme.colors.secondary : "rgba(0, 106, 97, 0.3)",
-                    },
-                  ]}
-                />
+              <View style={styles.metricCard}>
+                <View style={styles.metricHeader}>
+                  <Text style={styles.metricLabel}>Avg. Resolution</Text>
+                  <MaterialIcons name="timer" size={16} color={theme.colors.onSurfaceVariant} />
+                </View>
+                <View style={styles.metricValueContainer}>
+                  <Text style={styles.metricValue}>{metrics.avgResolutionHours}</Text>
+                  <Text style={styles.metricUnit}>hours</Text>
+                </View>
+                <Text style={styles.metricSubText}>Resolution Rate: {metrics.resolutionProgress}</Text>
+                <View style={styles.progressBarBg}>
+                  <View style={[styles.progressBarFill, { width: metrics.resolutionProgress as any }]} />
+                </View>
               </View>
-            ))}
-          </View>
-          <View style={styles.chartXLabels}>
-            <Text style={styles.xLabel}>Aug 01</Text>
-            <Text style={styles.xLabel}>Aug 15</Text>
-            <Text style={styles.xLabel}>Aug 30</Text>
-          </View>
-        </View>
 
-        {/* Complaint Analysis */}
-        <View style={styles.complaintCard}>
-          <Text style={styles.complaintTitle}>Complaint Analysis</Text>
-
-          <View style={styles.categoriesList}>
-            {/* Category 1 */}
-            <View style={styles.categoryItem}>
-              <View style={styles.categoryHeader}>
-                <Text style={styles.categoryLabel}>Plumbing</Text>
-                <Text style={styles.categoryValue}>42%</Text>
-              </View>
-              <View style={styles.categoryBarBg}>
-                <View style={[styles.categoryBarFill, { width: "42%", backgroundColor: theme.colors.secondary }]} />
+              <View style={styles.metricCard}>
+                <View style={styles.metricHeader}>
+                  <Text style={styles.metricLabel}>Amenity Utilization</Text>
+                  <MaterialIcons name="fitness-center" size={16} color={theme.colors.onSurfaceVariant} />
+                </View>
+                <View style={styles.metricValueContainer}>
+                  <Text style={styles.metricValue}>78%</Text>
+                  <Text style={styles.metricUnit}>capacity</Text>
+                </View>
+                <View style={styles.overlappingFaces}>
+                  <Image style={[styles.faceImage, { zIndex: 3 }]} source={{ uri: "https://ui-avatars.com/api/?name=A&background=random" }} />
+                  <Image style={[styles.faceImage, { left: 16, zIndex: 2 }]} source={{ uri: "https://ui-avatars.com/api/?name=B&background=random" }} />
+                  <Image style={[styles.faceImage, { left: 32, zIndex: 1 }]} source={{ uri: "https://ui-avatars.com/api/?name=C&background=random" }} />
+                </View>
               </View>
             </View>
 
-            {/* Category 2 */}
-            <View style={styles.categoryItem}>
-              <View style={styles.categoryHeader}>
-                <Text style={styles.categoryLabel}>Electrical</Text>
-                <Text style={styles.categoryValue}>28%</Text>
+            <View style={styles.trendsCard}>
+              <View style={styles.trendsHeader}>
+                <Text style={styles.trendsTitle}>Visitor Inflow Trends</Text>
+                <View style={styles.toggleContainer}>
+                  {(["30 Days", "90 Days"] as const).map((filter) => {
+                    const isActive = trendsFilter === filter;
+                    return (
+                      <TouchableOpacity
+                        key={filter}
+                        style={[styles.toggleButton, isActive && styles.toggleButtonActive]}
+                        onPress={() => setTrendsFilter(filter)}
+                      >
+                        <Text style={[styles.toggleText, isActive && styles.toggleTextActive]}>{filter}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
-              <View style={styles.categoryBarBg}>
-                <View style={[styles.categoryBarFill, { width: "28%", backgroundColor: theme.colors.secondaryContainer }]} />
-              </View>
-            </View>
-
-            {/* Category 3 */}
-            <View style={styles.categoryItem}>
-              <View style={styles.categoryHeader}>
-                <Text style={styles.categoryLabel}>Noise</Text>
-                <Text style={styles.categoryValue}>15%</Text>
-              </View>
-              <View style={styles.categoryBarBg}>
-                <View style={[styles.categoryBarFill, { width: "15%", backgroundColor: theme.colors.primary }]} />
-              </View>
-            </View>
-
-            {/* Category 4 */}
-            <View style={styles.categoryItem}>
-              <View style={styles.categoryHeader}>
-                <Text style={styles.categoryLabel}>Others</Text>
-                <Text style={styles.categoryValue}>15%</Text>
-              </View>
-              <View style={styles.categoryBarBg}>
-                <View style={[styles.categoryBarFill, { width: "15%", backgroundColor: theme.colors.outlineVariant }]} />
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.complaintFooter}>
-            <View style={styles.footerStat}>
-              <Text style={[styles.footerStatValue, { color: theme.colors.secondary }]}>82</Text>
-              <Text style={styles.footerStatLabel}>Resolved</Text>
-            </View>
-            <View style={styles.divider} />
-            <View style={styles.footerStat}>
-              <Text style={[styles.footerStatValue, { color: theme.colors.error }]}>12</Text>
-              <Text style={styles.footerStatLabel}>Pending</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Staff Efficiency Table */}
-        <View style={styles.staffCard}>
-          <Text style={styles.staffTitle}>Staff Efficiency</Text>
-          <View style={styles.tableHeader}>
-            <Text style={[styles.thText, { flex: 1.2 }]}>Department</Text>
-            <Text style={[styles.thText, { flex: 1.2 }]}>Top Performer</Text>
-            <Text style={[styles.thText, { flex: 1.5, textAlign: "right" }]}>Score & Rating</Text>
-          </View>
-
-          {/* Row 1 */}
-          <View style={styles.tableRow}>
-            <View style={[styles.tdLeft, { flex: 1.2 }]}>
-              <MaterialIcons name="security" size={16} color={theme.colors.secondary} />
-              <Text style={styles.tdText}>Security</Text>
-            </View>
-            <Text style={[styles.tdSubText, { flex: 1.2 }]}>R. Simmons</Text>
-            <View style={[styles.ratingWrapper, { flex: 1.5 }]}>
-              <Text style={styles.scoreText}>98%</Text>
-              <View style={styles.stars}>
-                {[1, 2, 3, 4, 5].map((s) => (
-                  <MaterialIcons key={s} name="star" size={12} color={theme.colors.secondary} />
+              <View style={styles.chartBarsContainer}>
+                {metrics.sparkline.map((h, i) => (
+                  <View key={i} style={styles.trendBarWrapper}>
+                    <View style={[styles.trendBar, { height: `${h}%`, backgroundColor: i === metrics.sparkline.length - 1 ? theme.colors.secondary : "rgba(0, 106, 97, 0.3)" }]} />
+                  </View>
                 ))}
               </View>
-              <MaterialIcons name="trending-up" size={16} color={theme.colors.secondary} style={styles.trendIcon} />
             </View>
-          </View>
 
-          {/* Row 2 */}
-          <View style={styles.tableRow}>
-            <View style={[styles.tdLeft, { flex: 1.2 }]}>
-              <MaterialIcons name="engineering" size={16} color={theme.colors.secondary} />
-              <Text style={styles.tdText}>Maintenance</Text>
-            </View>
-            <Text style={[styles.tdSubText, { flex: 1.2 }]}>J. Aris</Text>
-            <View style={[styles.ratingWrapper, { flex: 1.5 }]}>
-              <Text style={styles.scoreText}>92%</Text>
-              <View style={styles.stars}>
-                {[1, 2, 3, 4].map((s) => (
-                  <MaterialIcons key={s} name="star" size={12} color={theme.colors.secondary} />
-                ))}
-                <MaterialIcons name="star-outline" size={12} color={theme.colors.outlineVariant} />
-              </View>
-              <MaterialIcons name="trending-flat" size={16} color={theme.colors.onSurfaceVariant} style={styles.trendIcon} />
-            </View>
-          </View>
-
-          {/* Row 3 */}
-          <View style={[styles.tableRow, { borderBottomWidth: 0 }]}>
-            <View style={[styles.tdLeft, { flex: 1.2 }]}>
-              <MaterialIcons name="cleaning-services" size={16} color={theme.colors.secondary} />
-              <Text style={styles.tdText}>Sanitation</Text>
-            </View>
-            <Text style={[styles.tdSubText, { flex: 1.2 }]}>M. Chen</Text>
-            <View style={[styles.ratingWrapper, { flex: 1.5 }]}>
-              <Text style={styles.scoreText}>89%</Text>
-              <View style={styles.stars}>
-                {[1, 2, 3, 4].map((s) => (
-                  <MaterialIcons key={s} name="star" size={12} color={theme.colors.secondary} />
-                ))}
-                <MaterialIcons name="star-outline" size={12} color={theme.colors.outlineVariant} />
-              </View>
-              <MaterialIcons name="trending-up" size={16} color={theme.colors.secondary} style={styles.trendIcon} />
-            </View>
-          </View>
-        </View>
-
-        {/* CTA Button */}
-        <TouchableOpacity style={styles.exportButton} activeOpacity={0.8} onPress={handleExport}>
-          <MaterialIcons name="download" size={20} color={theme.colors.onPrimary} />
-          <Text style={styles.exportText}>Export Monthly Report</Text>
-        </TouchableOpacity>
+            <TouchableOpacity style={styles.exportButton} activeOpacity={0.8} onPress={handleExport}>
+              <MaterialIcons name="download" size={20} color={theme.colors.onPrimary} />
+              <Text style={styles.exportText}>Export Monthly Report</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </View>
   );

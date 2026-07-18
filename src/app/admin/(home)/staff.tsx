@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -8,11 +8,14 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { theme } from "../../../theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { supabase } from "../../../../utils/supabase";
+import { useProfileStore } from "../../../store/useProfileStore";
 
 interface StaffMember {
   id: string;
@@ -23,57 +26,199 @@ interface StaffMember {
   avatar: string;
 }
 
-const mockStaff: StaffMember[] = [
-  {
-    id: "st-1",
-    name: "Rajesh Kumar",
-    role: "Senior Security Officer",
-    category: "Security",
-    status: "On Duty",
-    avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuBFsW4avb9RUDIzXCW8djuFtbd6XuS6e6T988INncf3CnIOsGXyRmqVpyRBhJsU8UwwMZE8SVUR5dMWFKvIRxuEdsjn9bOoo887r-cpHmVeqoxyAGhNgfQl8nvJhtQzuIUWPyMq76I9e-UpUAm4b2reKbeRTxfHxG4_agNGkm5oPGd5a3r60KvNup2aVxQPqGBcvh8L36wGH9gBx9PlJbJPDcDIi-OFOriUcxieLv6PXaOPx03gCE32mA",
-  },
-  {
-    id: "st-2",
-    name: "Amit Sharma",
-    role: "Head Electrician",
-    category: "Maintenance",
-    status: "On Duty",
-    avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuCQpMhTzyjdPXilJixYL5WQFY7wB2n5ZQIYFysU_ufIO6VBcUOc18dywcuxe8PvHQ78aGn9HINkYRVe4aA6Ro-r7Sca5c5X7qqsR1-HXJrtjt7TIENAN__FjYFh4XkzEjx7s0Guv_M8KRlezNCwHNKdBfjrUviv31UPZelqDsfzCjZGps1JmP0bNAXWsXPBKVp8bIOsXUwjwNqUc4Jg1kFBf4rbIPZVFeDbEojgNCOas05j0oMhmS2vrg",
-  },
-  {
-    id: "st-3",
-    name: "Sunita Devi",
-    role: "Security Supervisor",
-    category: "Security",
-    status: "Off Duty",
-    avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuAko2tr801nYUKhaPePOMFlaQVKYkTpXojqrmaqrvrfsQLjzQJfWoBqyU-HdwWI-NdssXjwu4WqZqPx2Evp3AL5cTBSPVTFTqVeshcXOrbu9yGYBt48RrmOO4dqVXBWDq-Kza_-WGcOG6uzx8NDfMvwVwLDsUhsY4K9hiM9qVpqXRoavi3LcUICS7g7DuR1S8WpEt-u248c21uPMTZHxrjK77q1-ZRKmBDYb-Bfj9vBkarn4aXG5b3sig",
-  },
-  {
-    id: "st-4",
-    name: "Vikram Singh",
-    role: "Gate Manager",
-    category: "Security",
-    status: "On Duty",
-    avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuDOtvugD4ecNGGxEV67Sip_ev8ny1XTtEQ80z1hzWDWa08QXUvMa5bFyQUMSXDh1XFZaBtGqQM18AbZ3slXk7S3dFyhUM7zd1JuIlyuLLNqvKKfczRDMDQ-1gFF6TBTxkLV-3I8nwySQuioTPRMLkFQE9K1Q15yH91aqHdrA2-kq-WeyUKq5_riq2FCwLFCjyfhIRF0VjxWiDQkSwYTSsmI0gojHcjxGin_Jgh8CySxicml6phFYcBE8g",
-  },
-];
-
 export default function ManageStaff() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { profile } = useProfileStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<"Security" | "Maintenance" | "Housekeeping" | "Others">("Security");
 
-  const filteredStaff = mockStaff.filter((staff) => {
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [counts, setCounts] = useState({ total: 0, onDuty: 0, offDuty: 0 });
+
+  const fetchStaff = async () => {
+    if (!profile?.societyId) return;
+    try {
+      // 1. Fetch guards in this society
+      const { data: members, error: memErr } = await supabase
+        .from("societymembers")
+        .select(`
+          user_id,
+          guestusers (
+            full_name,
+            email,
+            phone
+          )
+        `)
+        .eq("society_id", profile.societyId)
+        .eq("role", "Guard");
+
+      if (memErr) throw memErr;
+
+      // 2. Fetch assignments
+      const { data: assignments, error: assignErr } = await supabase
+        .from("guard_assignments")
+        .select("*");
+
+      if (assignErr) throw assignErr;
+
+      if (members) {
+        let total = members.length;
+        let onDuty = 0;
+        let offDuty = 0;
+
+        const mapped: StaffMember[] = members.map((m: any) => {
+          const hasAssignment = assignments?.some((a: any) => a.guard_id === m.user_id);
+          const status = hasAssignment ? "On Duty" : "Off Duty";
+
+          if (hasAssignment) onDuty++;
+          else offDuty++;
+
+          return {
+            id: m.user_id,
+            name: m.guestusers?.full_name || "Unknown Guard",
+            role: "Security Guard",
+            category: "Security",
+            status,
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(m.guestusers?.full_name || "Guard")}&background=random`,
+          };
+        });
+
+        setStaff(mapped);
+        setCounts({ total, onDuty, offDuty });
+      }
+    } catch (err: any) {
+      console.error("Error fetching staff:", err.message);
+    }
+  };
+
+  const assignGuardShift = async (guardId: string, gate: string) => {
+    if (!profile) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("guard_assignments")
+        .insert({
+          guard_id: guardId,
+          gate_name: gate,
+          shift_start: "08:00:00",
+          shift_end: "20:00:00",
+          assigned_by: profile.id,
+        });
+
+      if (error) throw error;
+      Alert.alert("Success", `Guard assigned to ${gate}`);
+      await fetchStaff();
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to assign guard");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeGuardShift = async (guardId: string) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("guard_assignments")
+        .delete()
+        .eq("guard_id", guardId);
+
+      if (error) throw error;
+      Alert.alert("Success", "Guard removed from duty shift.");
+      await fetchStaff();
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to remove shift");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddStaff = () => {
+    Alert.alert(
+      "Register Guard",
+      "Would you like to register a new test guard profile?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Register",
+          onPress: async () => {
+            if (!profile?.societyId) return;
+            setLoading(true);
+            try {
+              // Create a random user UUID
+              const guardId = "550e8400-e29b-41d4-a716-" + Math.floor(100000000000 + Math.random() * 900000000000).toString();
+              
+              // 1. Insert into guestusers
+              const { error: userErr } = await supabase
+                .from("guestusers")
+                .insert({
+                  id: guardId,
+                  full_name: "Guard Vikram Singh",
+                  email: `vikram.guard.${Math.floor(Math.random() * 1000)}@homecircle.com`,
+                  phone: "9876543210",
+                });
+
+              if (userErr) throw userErr;
+
+              // 2. Insert into userverifications (auto-verified)
+              const { error: verifyErr } = await supabase
+                .from("userverifications")
+                .insert({
+                  user_id: guardId,
+                  role: "Guard",
+                  society_id: profile.societyId,
+                  is_verified: true,
+                  verified_by: "Admin Manual",
+                });
+
+              if (verifyErr) throw verifyErr;
+
+              Alert.alert("Success", "Guard Vikram Singh successfully registered!");
+              await fetchStaff();
+            } catch (err: any) {
+              Alert.alert("Error", err.message || "Failed to register guard.");
+            } finally {
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  useEffect(() => {
+    if (profile?.societyId) {
+      setLoading(true);
+      fetchStaff().finally(() => setLoading(false));
+    }
+  }, [profile?.societyId]);
+
+  const filteredStaff = staff.filter((s) => {
     const matchesSearch =
-      staff.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      staff.role.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = staff.category === selectedCategory;
+      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.role.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = s.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
-  const handleStaffPress = (staff: StaffMember) => {
-    Alert.alert("Staff Details", `Name: ${staff.name}\nRole: ${staff.role}\nStatus: ${staff.status}`);
+  const handleStaffPress = (staffMember: StaffMember) => {
+    Alert.alert(
+      "Guard Shift Management",
+      `Manage shift for ${staffMember.name}:`,
+      [
+        { text: "Cancel", style: "cancel" },
+        staffMember.status === "Off Duty" ? {
+          text: "Assign Main Gate Shift",
+          onPress: () => assignGuardShift(staffMember.id, "Main Gate")
+        } : null,
+        staffMember.status === "On Duty" ? {
+          text: "Remove from Shift (Off Duty)",
+          onPress: () => removeGuardShift(staffMember.id)
+        } : null,
+      ].filter(Boolean) as any
+    );
   };
 
   return (
@@ -99,15 +244,15 @@ export default function ManageStaff() {
         <View style={styles.overviewGrid}>
           <View style={styles.overviewCard}>
             <Text style={styles.overviewLabel}>Total</Text>
-            <Text style={styles.overviewValue}>42</Text>
+            <Text style={styles.overviewValue}>{counts.total}</Text>
           </View>
           <View style={[styles.overviewCard, styles.overviewCardActive]}>
             <Text style={[styles.overviewLabel, { color: theme.colors.onSecondaryContainer }]}>On Duty</Text>
-            <Text style={[styles.overviewValue, { color: theme.colors.secondary }]}>38</Text>
+            <Text style={[styles.overviewValue, { color: theme.colors.secondary }]}>{counts.onDuty}</Text>
           </View>
           <View style={styles.overviewCard}>
             <Text style={styles.overviewLabel}>Absent</Text>
-            <Text style={[styles.overviewValue, { color: theme.colors.error }]}>04</Text>
+            <Text style={[styles.overviewValue, { color: theme.colors.error }]}>{counts.offDuty}</Text>
           </View>
         </View>
 
@@ -154,71 +299,77 @@ export default function ManageStaff() {
 
         {/* Staff List */}
         <View style={styles.listSection}>
-          <View style={styles.listWrapper}>
-            {filteredStaff.length > 0 ? (
-              filteredStaff.map((staff, index) => {
-                const isOnDuty = staff.status === "On Duty";
-                const isLast = index === filteredStaff.length - 1;
-                return (
-                  <TouchableOpacity
-                    key={staff.id}
-                    style={[
-                      styles.staffCard,
-                      !isOnDuty && { opacity: 0.75 },
-                      isLast && { borderBottomWidth: 0 },
-                    ]}
-                    onPress={() => handleStaffPress(staff)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.cardLeft}>
-                      <View style={styles.avatarWrapper}>
-                        <Image
-                          source={{ uri: staff.avatar }}
-                          style={[styles.avatar, !isOnDuty && styles.grayscaleImage]}
-                        />
-                        {isOnDuty && <View style={styles.statusDot} />}
+          {loading ? (
+            <View style={{ padding: 40, alignItems: "center" }}>
+              <ActivityIndicator size="small" color={theme.colors.secondary} />
+            </View>
+          ) : (
+            <View style={styles.listWrapper}>
+              {filteredStaff.length > 0 ? (
+                filteredStaff.map((staffMember, index) => {
+                  const isOnDuty = staffMember.status === "On Duty";
+                  const isLast = index === filteredStaff.length - 1;
+                  return (
+                    <TouchableOpacity
+                      key={staffMember.id}
+                      style={[
+                        styles.staffCard,
+                        !isOnDuty && { opacity: 0.75 },
+                        isLast && { borderBottomWidth: 0 },
+                      ]}
+                      onPress={() => handleStaffPress(staffMember)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.cardLeft}>
+                        <View style={styles.avatarWrapper}>
+                          <Image
+                            source={{ uri: staffMember.avatar }}
+                            style={[styles.avatar]}
+                          />
+                          {isOnDuty && <View style={styles.statusDot} />}
+                        </View>
+                        <View style={styles.infoWrapper}>
+                          <Text style={styles.staffName}>{staffMember.name}</Text>
+                          <Text style={styles.staffRole}>{staffMember.role}</Text>
+                        </View>
                       </View>
-                      <View style={styles.infoWrapper}>
-                        <Text style={styles.staffName}>{staff.name}</Text>
-                        <Text style={styles.staffRole}>{staff.role}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.cardRight}>
-                      <View
-                        style={[
-                          styles.statusBadge,
-                          {
-                            backgroundColor: isOnDuty
-                              ? theme.colors.secondaryContainer
-                              : theme.colors.surfaceContainerHigh,
-                          },
-                        ]}
-                      >
-                        <Text
+                      <View style={styles.cardRight}>
+                        <View
                           style={[
-                            styles.statusBadgeText,
+                            styles.statusBadge,
                             {
-                              color: isOnDuty
-                                ? theme.colors.onSecondaryContainer
-                                : theme.colors.onSurfaceVariant,
+                              backgroundColor: isOnDuty
+                                ? theme.colors.secondaryContainer
+                                : theme.colors.surfaceContainerHigh,
                             },
                           ]}
                         >
-                          {staff.status}
-                        </Text>
+                          <Text
+                            style={[
+                              styles.statusBadgeText,
+                              {
+                                color: isOnDuty
+                                  ? theme.colors.onSecondaryContainer
+                                  : theme.colors.onSurfaceVariant,
+                              },
+                            ]}
+                          >
+                            {staffMember.status}
+                          </Text>
+                        </View>
+                        <MaterialIcons name="chevron-right" size={24} color={theme.colors.outline} />
                       </View>
-                      <MaterialIcons name="chevron-right" size={24} color={theme.colors.outline} />
-                    </View>
-                  </TouchableOpacity>
-                );
-              })
-            ) : (
-              <View style={styles.emptyContainer}>
-                <MaterialIcons name="engineering" size={48} color={theme.colors.outline} />
-                <Text style={styles.emptyText}>No staff on duty in this category.</Text>
-              </View>
-            )}
-          </View>
+                    </TouchableOpacity>
+                  );
+                })
+              ) : (
+                <View style={styles.emptyContainer}>
+                  <MaterialIcons name="engineering" size={48} color={theme.colors.outline} />
+                  <Text style={styles.emptyText}>No staff on duty in this category.</Text>
+                </View>
+              )}
+            </View>
+          )}
         </View>
       </ScrollView>
 
@@ -226,7 +377,7 @@ export default function ManageStaff() {
       <TouchableOpacity
         style={[styles.fab, { bottom: insets.bottom + 24 }]}
         activeOpacity={0.8}
-        onPress={() => Alert.alert("Add Staff", "Register a new service staff profile.")}
+        onPress={handleAddStaff}
       >
         <MaterialIcons name="add" size={28} color={theme.colors.onSecondary} />
       </TouchableOpacity>

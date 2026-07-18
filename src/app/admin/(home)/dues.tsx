@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -12,99 +12,128 @@ import { useRouter } from "expo-router";
 import { theme } from "../../../theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-interface MemberPayment {
-  id: string;
-  name: string;
-  relation: string;
-  status: "Paid" | "Pending" | "Unpaid";
-  initials: string;
-}
-
-interface BillItem {
-  id: string;
-  title: string;
-  dateInfo: string;
-  amount: string;
-  status: "Unpaid" | "Success";
-}
+import { supabase } from "../../../../utils/supabase";
+import { useProfileStore } from "../../../store/useProfileStore";
+import { ActivityIndicator } from "react-native";
 
 export default function MaintenanceDues() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [activeSegment, setActiveSegment] = useState<"Pending" | "History">("Pending");
+  const { profile } = useProfileStore();
+  
+  const [activeSegment, setActiveSegment] = useState<"Pending" | "Paid">("Pending");
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const householdPayments: MemberPayment[] = [
-    {
-      id: "mem-1",
-      name: "Ananya Sharma",
-      relation: "Primary Member",
-      status: "Paid",
-      initials: "AS",
-    },
-    {
-      id: "mem-2",
-      name: "Arjun Mehta",
-      relation: "Family Member",
-      status: "Pending",
-      initials: "AM",
-    },
-    {
-      id: "mem-3",
-      name: "Ishani Mehta",
-      relation: "Family Member",
-      status: "Unpaid",
-      initials: "IM",
-    },
-  ];
+  const fetchInvoices = async () => {
+    if (!profile?.societyId) return;
+    try {
+      const { data, error } = await supabase
+        .from("maintenance_invoices")
+        .select(`
+          *,
+          flats (
+            flat_number,
+            towers ( name )
+          )
+        `)
+        .eq("society_id", profile.societyId)
+        .order("due_date", { ascending: true });
 
-  const pendingBills: BillItem[] = [
-    {
-      id: "b-1",
-      title: "October Maintenance",
-      dateInfo: "Bill Generated: Oct 01",
-      amount: "₹4,500.00",
-      status: "Unpaid",
-    },
-  ];
-
-  const paymentHistory: BillItem[] = [
-    {
-      id: "b-2",
-      title: "September Maintenance",
-      dateInfo: "Paid on Sep 28, 2023",
-      amount: "₹4,500.00",
-      status: "Success",
-    },
-    {
-      id: "b-3",
-      title: "August Maintenance",
-      dateInfo: "Paid on Aug 25, 2023",
-      amount: "₹4,200.00",
-      status: "Success",
-    },
-    {
-      id: "b-4",
-      title: "July Maintenance",
-      dateInfo: "Paid on Jul 30, 2023",
-      amount: "₹4,200.00",
-      status: "Success",
-    },
-  ];
-
-  const getMemberStatusStyle = (status: "Paid" | "Pending" | "Unpaid") => {
-    switch (status) {
-      case "Paid":
-        return { bg: "rgba(0, 106, 97, 0.1)", text: theme.colors.secondary };
-      case "Pending":
-        return { bg: "rgba(0, 111, 102, 0.05)", text: theme.colors.onSecondaryContainer };
-      case "Unpaid":
-      default:
-        return { bg: "rgba(186, 26, 26, 0.1)", text: theme.colors.error };
+      if (error) throw error;
+      if (data) {
+        setInvoices(data);
+        // Set first matching invoice as selected if none is selected yet
+        const pending = data.filter((i: any) => i.status === "Pending" || i.status === "Overdue");
+        const paid = data.filter((i: any) => i.status === "Paid");
+        const targetList = activeSegment === "Pending" ? pending : paid;
+        if (targetList.length > 0) {
+          setSelectedInvoice(targetList[0]);
+        } else {
+          setSelectedInvoice(null);
+        }
+      }
+    } catch (err: any) {
+      console.error("Error fetching invoices:", err.message);
     }
   };
 
-  const handlePay = () => {
-    Alert.alert("Collect Payment", "Opening integrated gateway for dues collection...");
+  useEffect(() => {
+    if (profile?.societyId) {
+      setLoading(true);
+      fetchInvoices().finally(() => setLoading(false));
+    }
+  }, [profile?.societyId, activeSegment]);
+
+  const totalPendingAmount = invoices
+    .filter((i: any) => i.status === "Pending" || i.status === "Overdue")
+    .reduce((sum: number, i: any) => sum + Number(i.amount), 0);
+
+  const pendingBills = invoices.filter((i: any) => i.status === "Pending" || i.status === "Overdue");
+  const paidBills = invoices.filter((i: any) => i.status === "Paid");
+
+  const displayedBills = activeSegment === "Pending" ? pendingBills : paidBills;
+
+  const handleRecordPayment = () => {
+    if (!selectedInvoice) {
+      Alert.alert("Select Invoice", "Please select a flat invoice from the list below.");
+      return;
+    }
+    if (selectedInvoice.status === "Paid") {
+      Alert.alert("Already Paid", "This invoice has already been fully paid.");
+      return;
+    }
+
+    Alert.alert(
+      "Record Payment",
+      `Record payment of ₹${Number(selectedInvoice.amount).toLocaleString("en-IN")} for Flat ${selectedInvoice.flats?.flat_number} (Tower ${selectedInvoice.flats?.towers?.name})?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Record Cash",
+          onPress: () => processPayment("Cash"),
+        },
+        {
+          text: "Record UPI",
+          onPress: () => processPayment("UPI"),
+        },
+      ]
+    );
+  };
+
+  const processPayment = async (method: string) => {
+    if (!selectedInvoice || !profile) return;
+    setLoading(true);
+    try {
+      // 1. Insert payment transaction log
+      const { error: payErr } = await supabase
+        .from("maintenance_payments")
+        .insert({
+          invoice_id: selectedInvoice.id,
+          amount_paid: selectedInvoice.amount,
+          paid_by: profile.id,
+          payment_method: method,
+          payment_reference: `Admin Manual (${method})`,
+        });
+
+      if (payErr) throw payErr;
+
+      // 2. Update invoice status
+      const { error: invErr } = await supabase
+        .from("maintenance_invoices")
+        .update({ status: "Paid" })
+        .eq("id", selectedInvoice.id);
+
+      if (invErr) throw invErr;
+
+      Alert.alert("Success", "Payment recorded successfully!");
+      await fetchInvoices();
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to record payment.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -121,98 +150,94 @@ export default function MaintenanceDues() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Hero Pending Dues Card */}
+        {/* Hero Outstanding Dues Card */}
         <View style={styles.heroCard}>
-          <Text style={styles.heroLabel}>Amount Pending</Text>
+          <Text style={styles.heroLabel}>Total Outstanding Dues</Text>
           <View style={styles.amountContainer}>
             <Text style={styles.currencySymbol}>₹</Text>
-            <Text style={styles.amountValue}>4,500.00</Text>
-          </View>
-          <View style={styles.dueDateRow}>
-            <MaterialIcons name="calendar-today" size={14} color={theme.colors.secondaryContainer} />
-            <Text style={styles.dueDateText}>Due on Oct 31, 2023</Text>
-          </View>
-          <TouchableOpacity style={styles.payButton} activeOpacity={0.8} onPress={handlePay}>
-            <Text style={styles.payButtonText}>Collect / Record Payment</Text>
-            <MaterialIcons name="arrow-forward" size={16} color={theme.colors.onSecondaryContainer} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Bill Breakdown Card */}
-        <View style={styles.breakdownCard}>
-          <View style={styles.breakdownHeader}>
-            <Text style={styles.breakdownTitle}>Bill Breakdown</Text>
-            <Text style={styles.breakdownPeriod}>October 2023</Text>
-          </View>
-          <View style={styles.breakdownList}>
-            {/* Item 1 */}
-            <View style={styles.breakdownItem}>
-              <View>
-                <Text style={styles.breakdownItemLabel}>Monthly Maintenance</Text>
-                <Text style={styles.breakdownItemSub}>Standard utility & upkeep fees</Text>
-              </View>
-              <Text style={styles.breakdownItemValue}>₹3,200.00</Text>
-            </View>
-            {/* Item 2 */}
-            <View style={styles.breakdownItem}>
-              <View>
-                <Text style={styles.breakdownItemLabel}>Sinking Fund</Text>
-                <Text style={styles.breakdownItemSub}>Emergency and future capital works</Text>
-              </View>
-              <Text style={styles.breakdownItemValue}>₹800.00</Text>
-            </View>
-            {/* Item 3 */}
-            <View style={[styles.breakdownItem, { borderBottomWidth: 0 }]}>
-              <View>
-                <Text style={styles.breakdownItemLabel}>Water Charges</Text>
-                <Text style={styles.breakdownItemSub}>Based on unit consumption meter</Text>
-              </View>
-              <Text style={styles.breakdownItemValue}>₹500.00</Text>
-            </View>
-          </View>
-
-          {/* Late payment alert */}
-          <View style={styles.lateAlertRow}>
-            <MaterialIcons name="info" size={16} color={theme.colors.error} />
-            <Text style={styles.lateAlertText}>
-              <Text style={{ fontWeight: "700" }}>Note:</Text> Late payments after the due date will incur a 2% interest charge per month as per society bylaws.
+            <Text style={styles.amountValue}>
+              {totalPendingAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </Text>
           </View>
+          <View style={styles.dueDateRow}>
+            <MaterialIcons name="business" size={14} color={theme.colors.secondaryContainer} />
+            <Text style={styles.dueDateText}>
+              {selectedInvoice
+                ? `Selected: Flat ${selectedInvoice.flats?.flat_number} (${selectedInvoice.billing_period})`
+                : "Select a flat below to record payment"}
+            </Text>
+          </View>
+          {selectedInvoice && selectedInvoice.status !== "Paid" && (
+            <TouchableOpacity style={styles.payButton} activeOpacity={0.8} onPress={handleRecordPayment}>
+              <Text style={styles.payButtonText}>Collect / Record Payment</Text>
+              <MaterialIcons name="arrow-forward" size={16} color={theme.colors.onSecondaryContainer} />
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Household Payment Status */}
-        <View style={styles.statusSection}>
-          <Text style={styles.statusSectionTitle}>Household Payment Status</Text>
-          <View style={styles.statusList}>
-            {householdPayments.map((member, index) => {
-              const statusStyle = getMemberStatusStyle(member.status);
-              const isLast = index === householdPayments.length - 1;
-              return (
-                <View
-                  key={member.id}
-                  style={[styles.memberRow, isLast && { borderBottomWidth: 0 }]}
-                >
-                  <View style={styles.memberLeft}>
-                    <View style={[styles.memberAvatar, { backgroundColor: member.status === "Paid" ? "rgba(0, 106, 97, 0.1)" : member.status === "Pending" ? "rgba(0, 111, 102, 0.05)" : "rgba(186, 26, 26, 0.08)" }]}>
-                      <Text style={[styles.memberAvatarText, { color: statusStyle.text }]}>
-                        {member.initials}
-                      </Text>
-                    </View>
-                    <View>
-                      <Text style={styles.memberName}>{member.name}</Text>
-                      <Text style={styles.memberRelation}>{member.relation}</Text>
-                    </View>
-                  </View>
-                  <View style={[styles.memberBadge, { backgroundColor: statusStyle.bg }]}>
-                    <Text style={[styles.memberBadgeText, { color: statusStyle.text }]}>
-                      {member.status}
-                    </Text>
-                  </View>
+        {/* Selected Invoice Bill Breakdown Card */}
+        {selectedInvoice ? (
+          <View style={styles.breakdownCard}>
+            <View style={styles.breakdownHeader}>
+              <Text style={styles.breakdownTitle}>
+                Bill Breakdown (Flat {selectedInvoice.flats?.flat_number})
+              </Text>
+              <Text style={styles.breakdownPeriod}>{selectedInvoice.billing_period}</Text>
+            </View>
+            <View style={styles.breakdownList}>
+              {/* Item 1: Base Maintenance (70%) */}
+              <View style={styles.breakdownItem}>
+                <View>
+                  <Text style={styles.breakdownItemLabel}>Monthly Maintenance</Text>
+                  <Text style={styles.breakdownItemSub}>Standard utility & upkeep fees (70%)</Text>
                 </View>
-              );
-            })}
+                <Text style={styles.breakdownItemValue}>
+                  ₹{(Number(selectedInvoice.amount) * 0.7).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                </Text>
+              </View>
+              {/* Item 2: Sinking Fund (15%) */}
+              <View style={styles.breakdownItem}>
+                <View>
+                  <Text style={styles.breakdownItemLabel}>Sinking Fund</Text>
+                  <Text style={styles.breakdownItemSub}>Emergency capital reserve (15%)</Text>
+                </View>
+                <Text style={styles.breakdownItemValue}>
+                  ₹{(Number(selectedInvoice.amount) * 0.15).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                </Text>
+              </View>
+              {/* Item 3: Water/Consumables (15%) */}
+              <View style={[styles.breakdownItem, { borderBottomWidth: 0 }]}>
+                <View>
+                  <Text style={styles.breakdownItemLabel}>Water & Common Charges</Text>
+                  <Text style={styles.breakdownItemSub}>Meter charges (15%)</Text>
+                </View>
+                <Text style={styles.breakdownItemValue}>
+                  ₹{(Number(selectedInvoice.amount) * 0.15).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                </Text>
+              </View>
+            </View>
+
+            {/* Late payment alert */}
+            <View style={styles.lateAlertRow}>
+              <MaterialIcons name="info" size={16} color={theme.colors.error} />
+              <Text style={styles.lateAlertText}>
+                <Text style={{ fontWeight: "700" }}>Due Date:</Text>{" "}
+                {new Date(selectedInvoice.due_date).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </Text>
+            </View>
           </View>
-        </View>
+        ) : (
+          <View style={[styles.breakdownCard, { padding: 24, alignItems: "center" }]}>
+            <MaterialIcons name="receipt" size={36} color={theme.colors.outline} />
+            <Text style={{ color: theme.colors.outline, marginTop: 8, ...theme.typography.bodyMd }}>
+              No invoice selected. Pick an invoice from the list below.
+            </Text>
+          </View>
+        )}
 
         {/* Segmented Tab Toggles */}
         <View style={styles.tabSection}>
@@ -222,73 +247,106 @@ export default function MaintenanceDues() {
               onPress={() => setActiveSegment("Pending")}
             >
               <Text style={[styles.tabText, activeSegment === "Pending" && styles.tabTextActive]}>
-                Pending Bills
+                Pending Invoices ({pendingBills.length})
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.tabButton, activeSegment === "History" && styles.tabButtonActive]}
-              onPress={() => setActiveSegment("History")}
+              style={[styles.tabButton, activeSegment === "Paid" && styles.tabButtonActive]}
+              onPress={() => setActiveSegment("Paid")}
             >
-              <Text style={[styles.tabText, activeSegment === "History" && styles.tabTextActive]}>
-                Payment History
+              <Text style={[styles.tabText, activeSegment === "Paid" && styles.tabTextActive]}>
+                Paid History ({paidBills.length})
               </Text>
             </TouchableOpacity>
           </View>
 
           {/* List content depending on tab segment */}
-          <View style={styles.billsList}>
-            {(activeSegment === "Pending" ? pendingBills : paymentHistory).map((bill) => {
-              const isUnpaid = bill.status === "Unpaid";
-              return (
-                <View key={bill.id} style={styles.billCard}>
-                  <View style={styles.billLeft}>
-                    <View
+          {loading ? (
+            <View style={{ padding: 40, alignItems: "center" }}>
+              <ActivityIndicator size="small" color={theme.colors.secondary} />
+            </View>
+          ) : (
+            <View style={styles.billsList}>
+              {displayedBills.length > 0 ? (
+                displayedBills.map((bill) => {
+                  const isUnpaid = bill.status !== "Paid";
+                  const isSelected = selectedInvoice?.id === bill.id;
+                  return (
+                    <TouchableOpacity
+                      key={bill.id}
                       style={[
-                        styles.billIconBox,
-                        {
-                          backgroundColor: isUnpaid
-                            ? "rgba(186, 26, 26, 0.08)"
-                            : "rgba(0, 106, 97, 0.08)",
-                        },
+                        styles.billCard,
+                        isSelected && { borderColor: theme.colors.secondary, borderWidth: 1.5 },
                       ]}
+                      onPress={() => setSelectedInvoice(bill)}
+                      activeOpacity={0.8}
                     >
-                      <MaterialIcons
-                        name={isUnpaid ? "receipt-long" : "check-circle"}
-                        size={20}
-                        color={isUnpaid ? theme.colors.error : theme.colors.secondary}
-                      />
-                    </View>
-                    <View>
-                      <Text style={styles.billTitle}>{bill.title}</Text>
-                      <Text style={styles.billDate}>{bill.dateInfo}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.billRight}>
-                    <Text style={styles.billAmount}>{bill.amount}</Text>
-                    <View
-                      style={[
-                        styles.billBadge,
-                        {
-                          backgroundColor: isUnpaid
-                            ? "rgba(186, 26, 26, 0.1)"
-                            : "rgba(0, 106, 97, 0.1)",
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.billBadgeText,
-                          { color: isUnpaid ? theme.colors.error : theme.colors.secondary },
-                        ]}
-                      >
-                        {isUnpaid ? "Unpaid" : "Success"}
-                      </Text>
-                    </View>
-                  </View>
+                      <View style={styles.billLeft}>
+                        <View
+                          style={[
+                            styles.billIconBox,
+                            {
+                              backgroundColor: isUnpaid
+                                ? "rgba(186, 26, 26, 0.08)"
+                                : "rgba(0, 106, 97, 0.08)",
+                            },
+                          ]}
+                        >
+                          <MaterialIcons
+                            name={isUnpaid ? "receipt-long" : "check-circle"}
+                            size={20}
+                            color={isUnpaid ? theme.colors.error : theme.colors.secondary}
+                          />
+                        </View>
+                        <View>
+                          <Text style={styles.billTitle}>
+                            Flat {bill.flats?.flat_number} (Tower {bill.flats?.towers?.name})
+                          </Text>
+                          <Text style={styles.billDate}>
+                            {bill.billing_period} • Due{" "}
+                            {new Date(bill.due_date).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.billRight}>
+                        <Text style={styles.billAmount}>
+                          ₹{Number(bill.amount).toLocaleString("en-IN")}
+                        </Text>
+                        <View
+                          style={[
+                            styles.billBadge,
+                            {
+                              backgroundColor: isUnpaid
+                                ? "rgba(186, 26, 26, 0.1)"
+                                : "rgba(0, 106, 97, 0.1)",
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.billBadgeText,
+                              { color: isUnpaid ? theme.colors.error : theme.colors.secondary },
+                            ]}
+                          >
+                            {bill.status}
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              ) : (
+                <View style={{ padding: 40, alignItems: "center" }}>
+                  <Text style={{ color: theme.colors.outline, ...theme.typography.bodyMd }}>
+                    No bills in this category.
+                  </Text>
                 </View>
-              );
-            })}
-          </View>
+              )}
+            </View>
+          )}
         </View>
 
         {/* Security / Encryption Footer */}
@@ -305,7 +363,7 @@ export default function MaintenanceDues() {
             </View>
           </View>
           <Text style={styles.footerNote}>
-            HomeCircle uses industry-leading encryption to protect your financial transactions. We do not store full card numbers.
+            HomeCircle database keeps track of all collected maintenance dues and links payments to logged-in administrator accounts for audit reporting.
           </Text>
         </View>
       </ScrollView>

@@ -17,6 +17,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "../theme";
 import { ChoiceCard } from "../components/get-started/ChoiceCard";
 import { useProfileStore } from "../store/useProfileStore";
+import * as Device from "expo-device";
+import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
+import { supabase } from "../../utils/supabase";
 
 export default function GetStartedScreen() {
   const router = useRouter();
@@ -26,8 +30,102 @@ export default function GetStartedScreen() {
   const heroOpacity = useRef(new Animated.Value(0)).current;
   const heroSlide = useRef(new Animated.Value(15)).current;
 
+  const fetchAndSaveToken = async () => {
+    try {
+      if (!Device.isDevice) {
+        console.log("Push notifications require a physical device.");
+        return;
+      }
+
+      if (Platform.OS === "android") {
+        await Notifications.setNotificationChannelAsync("default", {
+          name: "default",
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: "#FF231F7A",
+        });
+      }
+
+      const projectId =
+        Constants?.expoConfig?.extra?.eas?.projectId ??
+        Constants?.easConfig?.projectId;
+
+      if (!projectId) {
+        console.warn("EAS Project ID not found. Ensure app config is correct.");
+        return;
+      }
+
+      const tokenData = await Notifications.getExpoPushTokenAsync({
+        projectId,
+      });
+
+      const token = tokenData.data;
+      if (!token) return;
+
+      console.log("Expo Push Token:", token);
+
+      // Save token into 'notifications' table in Supabase
+      const { error: insertErr } = await supabase
+        .from("notifications")
+        .insert({ token })
+        .select();
+
+      if (insertErr && !insertErr.message.includes("duplicate") && insertErr.code !== "23505") {
+        console.error("Error saving token to Supabase:", insertErr.message);
+      }
+
+      // If user profile exists, update 'guestusers' to link the token
+      if (profile?.id) {
+        const { error: updateErr } = await supabase
+          .from("guestusers")
+          .update({ notification_token: token })
+          .eq("id", profile.id);
+
+        if (updateErr) {
+          console.error("Error linking token to guestuser profile:", updateErr.message);
+        }
+      }
+    } catch (err: any) {
+      console.warn("Failed to fetch or save push token:", err.message || err);
+    }
+  };
+
   React.useEffect(() => {
     loadProfile();
+
+    async function checkAndPromptNotifications() {
+      if (Platform.OS === "web") return;
+
+      try {
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+
+        if (existingStatus === "undetermined" || existingStatus === "denied") {
+          Alert.alert(
+            "Enable Push Notifications",
+            "Get real-time updates for visitor approvals, guard status, and community announcements directly on your device.",
+            [
+              { text: "Not Now", style: "cancel" },
+              {
+                text: "Enable",
+                onPress: async () => {
+                  const { status } = await Notifications.requestPermissionsAsync();
+                  if (status === "granted") {
+                    await fetchAndSaveToken();
+                  }
+                },
+              },
+            ]
+          );
+        } else if (existingStatus === "granted") {
+          await fetchAndSaveToken();
+        }
+      } catch (err) {
+        console.warn("Error checking notification permissions:", err);
+      }
+    }
+
+    checkAndPromptNotifications();
   }, []);
 
   React.useEffect(() => {

@@ -17,11 +17,25 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const { width } = Dimensions.get("window");
 
+import { useEffect } from "react";
+import { supabase } from "../../../../utils/supabase";
+import { ActivityIndicator } from "react-native";
+
 export default function AdminDashboard() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { profile } = useProfileStore();
   const [filterRange, setFilterRange] = useState("Last 7 Days");
+
+  const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState({
+    todayVisitors: 0,
+    activeStaff: 0,
+    openComplaints: 0,
+    pendingDues: "₹0",
+  });
+  const [chartData, setChartData] = useState<{ day: string; value: number }[]>([]);
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
 
   const greeting = () => {
     const hr = new Date().getHours();
@@ -30,28 +44,142 @@ export default function AdminDashboard() {
     return "Evening";
   };
 
-  const visitorFrequencyData = {
-    "Last 7 Days": [
-      { day: "Mon", value: 60 },
-      { day: "Tue", value: 45 },
-      { day: "Wed", value: 85 },
-      { day: "Thu", value: 70 },
-      { day: "Fri", value: 55 },
-      { day: "Sat", value: 95 },
-      { day: "Sun", value: 80 },
-    ],
-    "Last 30 Days": [
-      { day: "Mon", value: 75 },
-      { day: "Tue", value: 50 },
-      { day: "Wed", value: 90 },
-      { day: "Thu", value: 65 },
-      { day: "Fri", value: 80 },
-      { day: "Sat", value: 100 },
-      { day: "Sun", value: 85 },
-    ],
+  const fetchDashboardData = async () => {
+    if (!profile?.societyId) return;
+    try {
+      // 1. Today's Visitors count
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const { count: visitorsCount } = await supabase
+        .from("visitor_logs")
+        .select("*, requestpasses!inner(*)", { count: "exact", head: true })
+        .eq("action_type", "Check-in")
+        .gte("created_at", startOfDay.toISOString())
+        .eq("requestpasses.resident_details->>societyId", profile.societyId);
+
+      // 2. Active Staff count (Guards)
+      const { count: staffCount } = await supabase
+        .from("societymembers")
+        .select("*", { count: "exact", head: true })
+        .eq("society_id", profile.societyId)
+        .eq("role", "Guard");
+
+      // 3. Open Complaints count
+      const { count: complaintsCount } = await supabase
+        .from("tickets")
+        .select("*", { count: "exact", head: true })
+        .eq("society_id", profile.societyId)
+        .in("status", ["Pending", "In Progress"]);
+
+      // 4. Pending Dues sum
+      const { data: duesData } = await supabase
+        .from("maintenance_invoices")
+        .select("amount")
+        .eq("society_id", profile.societyId)
+        .in("status", ["Pending", "Overdue"]);
+
+      const totalDues = duesData?.reduce((acc: number, item: any) => acc + Number(item.amount), 0) || 0;
+      const formattedDues = totalDues >= 1000 
+        ? `₹${(totalDues / 1000).toFixed(1)}k` 
+        : `₹${totalDues}`;
+
+      setStats({
+        todayVisitors: visitorsCount || 0,
+        activeStaff: staffCount || 0,
+        openComplaints: complaintsCount || 0,
+        pendingDues: formattedDues,
+      });
+
+      // 5. Recent Activity (last 3 visitor logs)
+      const { data: logsData } = await supabase
+        .from("visitor_logs")
+        .select(`
+          id,
+          action_type,
+          created_at,
+          requestpasses!inner (
+            visitor_name,
+            designation,
+            tower_no,
+            flat_no
+          )
+        `)
+        .eq("requestpasses.resident_details->>societyId", profile.societyId)
+        .order("created_at", { ascending: false })
+        .limit(3);
+
+      if (logsData) {
+        setRecentActivity(
+          logsData.map((log: any) => {
+            const timeText = new Date(log.created_at).toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+            return {
+              id: log.id,
+              name: `${log.requestpasses?.designation || "Visitor"}: ${log.requestpasses?.visitor_name || "Unknown"}`,
+              unit: `Unit ${log.requestpasses?.tower_no || ""}-${log.requestpasses?.flat_no || ""} • ${timeText}`,
+              status: log.action_type === "Check-in" ? "Checked In" : "Checked Out",
+            };
+          })
+        );
+      }
+
+      // 6. Chart Data
+      const startOfRange = new Date();
+      startOfRange.setDate(startOfRange.getDate() - 7);
+      const { data: chartLogs } = await supabase
+        .from("visitor_logs")
+        .select(`
+          created_at,
+          requestpasses!inner (
+            resident_details
+          )
+        `)
+        .eq("action_type", "Check-in")
+        .gte("created_at", startOfRange.toISOString())
+        .eq("requestpasses.resident_details->>societyId", profile.societyId);
+
+      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const countsByDay: Record<string, number> = {};
+      const order = [];
+
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dayName = days[d.getDay()];
+        countsByDay[dayName] = 0;
+        order.push(dayName);
+      }
+
+      if (chartLogs) {
+        chartLogs.forEach((log: any) => {
+          const logDate = new Date(log.created_at);
+          const dayName = days[logDate.getDay()];
+          if (countsByDay[dayName] !== undefined) {
+            countsByDay[dayName] += 1;
+          }
+        });
+      }
+
+      const maxVal = Math.max(...Object.values(countsByDay), 1);
+      const formattedChart = order.map((dayName) => ({
+        day: dayName,
+        value: Math.round((countsByDay[dayName] / maxVal) * 100) || 5,
+      }));
+      setChartData(formattedChart);
+
+    } catch (err: any) {
+      console.error("Error loading dashboard data:", err.message);
+    }
   };
 
-  const currentChartData = visitorFrequencyData[filterRange as keyof typeof visitorFrequencyData] || visitorFrequencyData["Last 7 Days"];
+  useEffect(() => {
+    if (profile?.societyId) {
+      setLoading(true);
+      fetchDashboardData().finally(() => setLoading(false));
+    }
+  }, [profile?.societyId]);
 
   const handleQuickAction = (action: string) => {
     if (action === "residents") {
@@ -93,238 +221,247 @@ export default function AdminDashboard() {
           <Text style={styles.welcomeTitle}>Society Overview</Text>
         </View>
 
-        {/* Bento Grid Stats */}
-        <View style={styles.statsGrid}>
-          {/* Card 1 */}
-          <TouchableOpacity
-            style={styles.statCard}
-            onPress={() => router.push("/(global)/visitor-log" as any)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.statHeader}>
-              <View style={[styles.statIconBox, { backgroundColor: "rgba(0, 106, 97, 0.1)" }]}>
-                <MaterialIcons name="group" size={20} color={theme.colors.secondary} />
-              </View>
-              <Text style={[styles.statTrendText, { color: theme.colors.secondary }]}>+12%</Text>
-            </View>
-            <View>
-              <Text style={styles.statCardLabel}>Today's Visitors</Text>
-              <Text style={styles.statCardValue}>142</Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Card 2 */}
-          <TouchableOpacity
-            style={styles.statCard}
-            onPress={() => router.push("/admin/(home)/staff" as any)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.statHeader}>
-              <View style={[styles.statIconBox, { backgroundColor: "rgba(124, 131, 155, 0.1)" }]}>
-                <MaterialIcons name="engineering" size={20} color={theme.colors.onSurfaceVariant} />
-              </View>
-              <Text style={styles.statTrendText}>Stable</Text>
-            </View>
-            <View>
-              <Text style={styles.statCardLabel}>Active Staff</Text>
-              <Text style={styles.statCardValue}>24</Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Card 3 */}
-          <TouchableOpacity
-            style={styles.statCard}
-            onPress={() => router.push("/admin/(home)/complaints" as any)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.statHeader}>
-              <View style={[styles.statIconBox, { backgroundColor: "rgba(186, 26, 26, 0.1)" }]}>
-                <MaterialIcons name="report-problem" size={20} color={theme.colors.error} />
-              </View>
-              <Text style={[styles.statTrendText, { color: theme.colors.error }]}>High</Text>
-            </View>
-            <View>
-              <Text style={styles.statCardLabel}>Open Complaints</Text>
-              <Text style={styles.statCardValue}>08</Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Card 4 */}
-          <TouchableOpacity
-            style={styles.statCard}
-            onPress={() => router.push("/admin/(home)/dues" as any)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.statHeader}>
-              <View style={[styles.statIconBox, { backgroundColor: "rgba(0, 0, 0, 0.05)" }]}>
-                <MaterialIcons name="payments" size={20} color={theme.colors.primary} />
-              </View>
-              <Text style={styles.statTrendText}>Due Today</Text>
-            </View>
-            <View>
-              <Text style={styles.statCardLabel}>Pending Dues</Text>
-              <Text style={styles.statCardValue}>$4.2k</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        {/* Visitor Frequency Chart & Quick Actions (Grid/Stack layout) */}
-        <View style={styles.analyticsSection}>
-          {/* Chart Card */}
-          <View style={styles.chartCard}>
-            <View style={styles.chartHeader}>
-              <Text style={styles.chartTitle}>Visitor Frequency</Text>
-              <TouchableOpacity
-                style={styles.dropdownButton}
-                onPress={() => {
-                  setFilterRange(prev => (prev === "Last 7 Days" ? "Last 30 Days" : "Last 7 Days"));
-                }}
-              >
-                <Text style={styles.dropdownText}>{filterRange}</Text>
-                <MaterialIcons name="arrow-drop-down" size={18} color={theme.colors.onSurfaceVariant} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.chartBarsContainer}>
-              {currentChartData.map((item, index) => (
-                <View key={index} style={styles.chartBarWrapper}>
-                  <View style={styles.barBackground}>
-                    <View
-                      style={[
-                        styles.barFill,
-                        {
-                          height: `${item.value}%`,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.barLabel}>{item.day}</Text>
-                </View>
-              ))}
-            </View>
+        {loading ? (
+          <View style={{ padding: 40, alignItems: "center" }}>
+            <ActivityIndicator size="large" color={theme.colors.secondary} />
           </View>
-
-          {/* Quick Actions Card */}
-          <View style={styles.quickActionsCard}>
-            <Text style={styles.quickActionsTitle}>Quick Actions</Text>
-            <View style={styles.actionsList}>
+        ) : (
+          <>
+            {/* Bento Grid Stats */}
+            <View style={styles.statsGrid}>
+              {/* Card 1 */}
               <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => router.push("/admin/socities" as any)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.actionLeft}>
-                  <MaterialIcons name="business" size={20} color={theme.colors.onPrimary} />
-                  <View style={{ flex: 1, marginLeft: 0 }}>
-                    <Text style={styles.actionText} numberOfLines={1}>{profile?.societyName || "HomeCircle Society"}</Text>
-                    <Text style={{ color: "rgba(255, 255, 255, 0.6)", fontSize: 11, marginTop: 2 }} numberOfLines={1}>
-                      Sector 15, Gurgaon
-                    </Text>
-                  </View>
-                </View>
-                <MaterialIcons name="chevron-right" size={20} color="rgba(255, 255, 255, 0.5)" />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => handleQuickAction("residents")}
-                activeOpacity={0.7}
-              >
-                <View style={styles.actionLeft}>
-                  <MaterialIcons name="person-add" size={20} color={theme.colors.onPrimary} />
-                  <Text style={styles.actionText}>Manage Residents</Text>
-                </View>
-                <MaterialIcons name="chevron-right" size={20} color="rgba(255, 255, 255, 0.5)" />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => router.push("/admin/(tabs)/notices" as any)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.actionLeft}>
-                  <MaterialIcons name="campaign" size={20} color={theme.colors.onPrimary} />
-                  <Text style={styles.actionText}>Post Notice</Text>
-                </View>
-                <MaterialIcons name="chevron-right" size={20} color="rgba(255, 255, 255, 0.5)" />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionButton}
+                style={styles.statCard}
                 onPress={() => router.push("/(global)/visitor-log" as any)}
                 activeOpacity={0.7}
               >
-                <View style={styles.actionLeft}>
-                  <MaterialIcons name="assignment" size={20} color={theme.colors.onPrimary} />
-                  <Text style={styles.actionText}>View Logs</Text>
+                <View style={styles.statHeader}>
+                  <View style={[styles.statIconBox, { backgroundColor: "rgba(0, 106, 97, 0.1)" }]}>
+                    <MaterialIcons name="group" size={20} color={theme.colors.secondary} />
+                  </View>
+                  <Text style={[styles.statTrendText, { color: theme.colors.secondary }]}>Live</Text>
                 </View>
-                <MaterialIcons name="chevron-right" size={20} color="rgba(255, 255, 255, 0.5)" />
+                <View>
+                  <Text style={styles.statCardLabel}>Today's Visitors</Text>
+                  <Text style={styles.statCardValue}>{stats.todayVisitors}</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Card 2 */}
+              <TouchableOpacity
+                style={styles.statCard}
+                onPress={() => router.push("/admin/(home)/staff" as any)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.statHeader}>
+                  <View style={[styles.statIconBox, { backgroundColor: "rgba(124, 131, 155, 0.1)" }]}>
+                    <MaterialIcons name="engineering" size={20} color={theme.colors.onSurfaceVariant} />
+                  </View>
+                  <Text style={styles.statTrendText}>Guards</Text>
+                </View>
+                <View>
+                  <Text style={styles.statCardLabel}>Active Staff</Text>
+                  <Text style={styles.statCardValue}>{stats.activeStaff}</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Card 3 */}
+              <TouchableOpacity
+                style={styles.statCard}
+                onPress={() => router.push("/admin/(home)/complaints" as any)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.statHeader}>
+                  <View style={[styles.statIconBox, { backgroundColor: "rgba(186, 26, 26, 0.1)" }]}>
+                    <MaterialIcons name="report-problem" size={20} color={theme.colors.error} />
+                  </View>
+                  <Text style={[styles.statTrendText, { color: theme.colors.error }]}>High</Text>
+                </View>
+                <View>
+                  <Text style={styles.statCardLabel}>Open Complaints</Text>
+                  <Text style={styles.statCardValue}>{stats.openComplaints}</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Card 4 */}
+              <TouchableOpacity
+                style={styles.statCard}
+                onPress={() => router.push("/admin/(home)/dues" as any)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.statHeader}>
+                  <View style={[styles.statIconBox, { backgroundColor: "rgba(0, 0, 0, 0.05)" }]}>
+                    <MaterialIcons name="payments" size={20} color={theme.colors.primary} />
+                  </View>
+                  <Text style={styles.statTrendText}>Unpaid</Text>
+                </View>
+                <View>
+                  <Text style={styles.statCardLabel}>Pending Dues</Text>
+                  <Text style={styles.statCardValue}>{stats.pendingDues}</Text>
+                </View>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.secureFooter}>
-              <MaterialIcons name="shield" size={16} color={theme.colors.secondaryContainer} />
-              <Text style={styles.secureFooterText}>System Secure - 100% Uptime</Text>
-            </View>
-          </View>
-        </View>
+            {/* Visitor Frequency Chart & Quick Actions (Grid/Stack layout) */}
+            <View style={styles.analyticsSection}>
+              {/* Chart Card */}
+              <View style={styles.chartCard}>
+                <View style={styles.chartHeader}>
+                  <Text style={styles.chartTitle}>Visitor Frequency</Text>
+                  <View style={styles.dropdownButton}>
+                    <Text style={styles.dropdownText}>{filterRange}</Text>
+                  </View>
+                </View>
 
-        {/* Recent Visitor Activity */}
-        <View style={styles.activitySection}>
-          <View style={styles.activityHeader}>
-            <Text style={styles.activityTitle}>Recent Visitor Activity</Text>
-            <TouchableOpacity onPress={() => router.push("/admin/(tabs)/reports")}>
-              <Text style={styles.viewAllText}>View All</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.activityList}>
-            {/* Item 1 */}
-            <View style={styles.activityItem}>
-              <Image
-                style={styles.activityAvatar}
-                source={{
-                  uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuCpflrYWie7qBXXhNClLhrqF5B1uYLWRSmQ8n_3jSott0TlHI2OQjasSNkw_f9e9IjZeFSPyePLJtF99O3BJliNFnLX7zwRt-Ed74N4ZrabLpZjLubLBajTu--XZ4kGulUUVYXJeCn3vxMFI-QnATeK48It3F9s0Q_f4tUr0Js8_sMUQBnnG3hBT7BXKxYS-WzRVCeCyCRyyMTcE7UoDc77Lfm1wr3BBx9fPSEcN0rLZ6T0jVU2cv19Vw",
-                }}
-              />
-              <View style={styles.activityInfo}>
-                <Text style={styles.activityName}>Delivery: John Smith</Text>
-                <Text style={styles.activitySub}>Unit 402 • 10:45 AM</Text>
+                <View style={styles.chartBarsContainer}>
+                  {chartData.map((item, index) => (
+                    <View key={index} style={styles.chartBarWrapper}>
+                      <View style={styles.barBackground}>
+                        <View
+                          style={[
+                            styles.barFill,
+                            {
+                              height: `${item.value}%`,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.barLabel}>{item.day}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: theme.colors.secondaryContainer }]}>
-                <Text style={[styles.statusBadgeText, { color: theme.colors.onSecondaryContainer }]}>
-                  Approved
-                </Text>
+
+              {/* Quick Actions Card */}
+              <View style={styles.quickActionsCard}>
+                <Text style={styles.quickActionsTitle}>Quick Actions</Text>
+                <View style={styles.actionsList}>
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => router.push("/admin/socities" as any)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.actionLeft}>
+                      <MaterialIcons name="business" size={20} color={theme.colors.onPrimary} />
+                      <View style={{ flex: 1, marginLeft: 0 }}>
+                        <Text style={styles.actionText} numberOfLines={1}>{profile?.societyName || "HomeCircle Society"}</Text>
+                        <Text style={{ color: "rgba(255, 255, 255, 0.6)", fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+                          Sector 15, Gurgaon
+                        </Text>
+                      </View>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={20} color="rgba(255, 255, 255, 0.5)" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => handleQuickAction("residents")}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.actionLeft}>
+                      <MaterialIcons name="person-add" size={20} color={theme.colors.onPrimary} />
+                      <Text style={styles.actionText}>Manage Residents</Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={20} color="rgba(255, 255, 255, 0.5)" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => router.push("/admin/(tabs)/notices" as any)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.actionLeft}>
+                      <MaterialIcons name="campaign" size={20} color={theme.colors.onPrimary} />
+                      <Text style={styles.actionText}>Post Notice</Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={20} color="rgba(255, 255, 255, 0.5)" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => router.push("/(global)/visitor-log" as any)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.actionLeft}>
+                      <MaterialIcons name="assignment" size={20} color={theme.colors.onPrimary} />
+                      <Text style={styles.actionText}>View Logs</Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={20} color="rgba(255, 255, 255, 0.5)" />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.secureFooter}>
+                  <MaterialIcons name="shield" size={16} color={theme.colors.secondaryContainer} />
+                  <Text style={styles.secureFooterText}>System Secure - 100% Uptime</Text>
+                </View>
               </View>
             </View>
 
-            {/* Item 2 */}
-            <View style={styles.activityItem}>
-              <Image
-                style={styles.activityAvatar}
-                source={{
-                  uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuAjGXgOwuQ2vwJuO2fN5__xa2lUlR2HVbR0lzyNWg9cZZzapBADOVBIFDl8tszHVb7f1BIjxrwGD4MYMtH9wF5pFuKxLp6V9HoXqzuZpYJp-e0pSDsNGJddzQlxWgfvrh9QbH6HPMiJLMQ3FKIWKhjj-24T5FoCx88mue1otgpNwQHtNW4u4grVvQdHzRAAjBNZmJUAd-jOygCwJLpGJ9Ic685kv_yRGnEfyIi9Paf0ad7F_AOkfEfLpg",
-                }}
-              />
-              <View style={styles.activityInfo}>
-                <Text style={styles.activityName}>Guest: Martha Wayne</Text>
-                <Text style={styles.activitySub}>Unit 105 • 09:30 AM</Text>
+            {/* Recent Visitor Activity */}
+            <View style={styles.activitySection}>
+              <View style={styles.activityHeader}>
+                <Text style={styles.activityTitle}>Recent Visitor Activity</Text>
+                <TouchableOpacity onPress={() => router.push("/admin/(tabs)/reports")}>
+                  <Text style={styles.viewAllText}>View All</Text>
+                </TouchableOpacity>
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: theme.colors.surfaceContainerHighest }]}>
-                <Text style={[styles.statusBadgeText, { color: theme.colors.onSurfaceVariant }]}>
-                  Checked Out
-                </Text>
+
+              <View style={styles.activityList}>
+                {recentActivity.length > 0 ? (
+                  recentActivity.map((activity) => (
+                    <View key={activity.id} style={styles.activityItem}>
+                      <View style={[styles.statIconBox, { backgroundColor: "rgba(0, 106, 97, 0.05)" }]}>
+                        <MaterialIcons name="person" size={24} color={theme.colors.secondary} />
+                      </View>
+                      <View style={styles.activityInfo}>
+                        <Text style={styles.activityName}>{activity.name}</Text>
+                        <Text style={styles.activitySub}>{activity.unit}</Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          {
+                            backgroundColor:
+                              activity.status === "Checked In"
+                                ? theme.colors.secondaryContainer
+                                : theme.colors.surfaceContainerHighest,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statusBadgeText,
+                            {
+                              color:
+                                activity.status === "Checked In"
+                                  ? theme.colors.onSecondaryContainer
+                                  : theme.colors.onSurfaceVariant,
+                            },
+                          ]}
+                        >
+                          {activity.status}
+                        </Text>
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <View style={{ padding: 32, alignItems: "center" }}>
+                    <Text style={{ color: theme.colors.outline, ...theme.typography.bodyMd }}>
+                      No recent visitor activity logged today.
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
-          </View>
-        </View>
+          </>
+        )}
       </ScrollView>
 
       {/* FAB for contextual action */}
       <TouchableOpacity
         style={[styles.fab, { bottom: insets.bottom + 76 }]}
         activeOpacity={0.8}
-        onPress={() => Alert.alert("Create Pass", "Shortcut to create guest/visitor pass.")}
+        onPress={() => router.push("/admin/(tabs)/notices" as any)}
       >
         <MaterialIcons name="add" size={28} color={theme.colors.onSecondary} />
       </TouchableOpacity>
