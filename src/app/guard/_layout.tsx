@@ -1,5 +1,5 @@
 import React from "react";
-import { Redirect, Tabs } from "expo-router";
+import { Redirect, Stack } from "expo-router";
 import { View, ActivityIndicator } from "react-native";
 import { useProfileStore } from "../../store/useProfileStore";
 import { theme } from "../../theme";
@@ -28,7 +28,7 @@ export default function GuardLayout() {
   }
 
   return (
-    <Tabs
+    <Stack
       screenOptions={{
         headerShown: false,
       }}

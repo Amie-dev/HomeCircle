@@ -1,5 +1,8 @@
 import { MaterialIcons } from "@react-native-vector-icons/material-icons";
+import Constants from "expo-constants";
+import * as Device from "expo-device";
 import { Image } from "expo-image";
+import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useRef } from "react";
@@ -14,13 +17,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { theme } from "../theme";
+import { supabase } from "../../utils/supabase";
 import { ChoiceCard } from "../components/get-started/ChoiceCard";
 import { useProfileStore } from "../store/useProfileStore";
-import * as Device from "expo-device";
-import * as Notifications from "expo-notifications";
-import Constants from "expo-constants";
-import { supabase } from "../../utils/supabase";
+import { theme } from "../theme";
 
 export default function GetStartedScreen() {
   const router = useRouter();
