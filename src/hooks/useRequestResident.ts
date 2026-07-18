@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
+import { sendPushNotification } from '../../utils/notificationService';
 import * as Notifications from 'expo-notifications';
 
 export interface ResidentVerification {
@@ -162,15 +163,41 @@ export function useUpdateResidentVerification() {
       // If status changed to Verified, log a push notification in Supabase
       if (isVerified && !previousStatus) {
         try {
+          const isGuard = data?.role === "Guard";
+          const notifTitle = isGuard ? "Verification Approved 👮" : "Verification Approved 🏠";
+          const notifBody = isGuard 
+            ? "Approved! You are now active on duty." 
+            : "Approved! You are now a flat member.";
+          const targetScreen = isGuard ? "/guard" : "/resident";
+
+          // Fetch the user's push token
+          const { data: userData } = await supabase
+            .from("users")
+            .select("notification_token")
+            .eq("id", userId)
+            .maybeSingle();
+
+          if (userData?.notification_token) {
+            await sendPushNotification({
+              token: userData.notification_token,
+              title: notifTitle,
+              body: notifBody,
+              data: {
+                screen: targetScreen,
+                url: targetScreen,
+              },
+            });
+          }
+
           await supabase.from("push_notifications").insert({
             user_id: userId,
-            title: "Verification Approved 🏠",
-            body: "Approved! You are now a flat member.",
-            screen: "/resident",
+            title: notifTitle,
+            body: notifBody,
+            screen: targetScreen,
             status: "Sent",
           });
         } catch (notifErr) {
-          console.warn("Failed to insert verification push notification:", notifErr);
+          console.warn("Failed to send verification push notification:", notifErr);
         }
       }
 

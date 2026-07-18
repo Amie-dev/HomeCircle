@@ -209,11 +209,19 @@ export default function ManageResidents() {
       // If status changed to "Verified", trigger push notification offline
       if (newStatus === "Verified" && previousStatus !== "Verified") {
         try {
+          const isGuard = selectedResident.unit === "Security Guard";
+          const targetUrl = isGuard ? "/guard" : "/resident";
+          const targetTitle = isGuard ? "Verification Approved 👮" : "Verification Approved 🏠";
+          const targetBody = isGuard ? "Approved! You are now active on duty." : "Approved! You are now a flat member.";
+
           await Notifications.scheduleNotificationAsync({
             content: {
-              title: "Verification Approved 🏠",
-              body: "Approved! You are now a flat member.",
-              data: { residentId: selectedResident.id },
+              title: targetTitle,
+              body: targetBody,
+              data: {
+                residentId: selectedResident.id,
+                url: targetUrl,
+              },
             },
             trigger: null,
           });

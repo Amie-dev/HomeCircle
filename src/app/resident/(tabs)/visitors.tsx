@@ -8,6 +8,7 @@ import { theme } from "../../../theme";
 import { useProfileStore } from "../../../store/useProfileStore";
 import { usePassesHistory } from "../../../hooks/useRequestPasses";
 import { supabase } from "../../../../utils/supabase";
+import { sendPushNotification } from "../../../../utils/notificationService";
 
 export default function VisitorsScreen() {
   const router = useRouter();
@@ -28,16 +29,43 @@ export default function VisitorsScreen() {
       
       if (error) throw error;
 
+      const title = status === "Approved" ? "Pass Approved 🎟️" : "Pass Rejected ❌";
+      const body = status === "Approved"
+        ? "Your request to visit has been approved by the resident."
+        : "Your request to visit was rejected by the resident.";
+      const screen = "/request-pass";
+
+      // Fetch the guest's push token and send push notification
+      try {
+        const { data: userData } = await supabase
+          .from("users")
+          .select("notification_token")
+          .eq("id", guestId)
+          .maybeSingle();
+
+        if (userData?.notification_token) {
+          await sendPushNotification({
+            token: userData.notification_token,
+            title,
+            body,
+            data: {
+              screen,
+              url: screen,
+            },
+          });
+        }
+      } catch (pushErr) {
+        console.warn("Failed to send push notification to guest:", pushErr);
+      }
+
       // Notify the guest in push_notifications table
       await supabase
         .from("push_notifications")
         .insert({
           user_id: guestId,
-          title: status === "Approved" ? "Pass Approved 🎟️" : "Pass Rejected ❌",
-          body: status === "Approved"
-            ? "Your request to visit has been approved by the resident."
-            : "Your request to visit was rejected by the resident.",
-          screen: "/request-pass",
+          title,
+          body,
+          screen,
           status: "Sent",
         });
     },

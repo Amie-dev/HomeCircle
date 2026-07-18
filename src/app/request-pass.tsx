@@ -4,21 +4,26 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  KeyboardAvoidingView,
-  Platform,
 } from "react-native";
-import { useCreatePass, usePassesHistory, useRegisterProfile } from "../hooks/useRequestPasses";
-import { useProfileStore } from "../store/useProfileStore";
-import { useGuestProfileStore } from "../store/useGuestProfileStore";
-import { theme } from "../theme";
 import { supabase } from "../../utils/supabase";
+import {
+  useCreatePass,
+  usePassesHistory,
+  useRegisterProfile,
+} from "../hooks/useRequestPasses";
+import { useGuestProfileStore } from "../store/useGuestProfileStore";
+import { useProfileStore } from "../store/useProfileStore";
+import { theme } from "../theme";
 
 // Extracted Modular Components
+import { sendPushNotification } from "../../utils/notificationService";
 import { PassHistoryList } from "../components/request-pass/PassHistoryList";
 import { PassRequestForm } from "../components/request-pass/PassRequestForm";
 import { ProfileCard } from "../components/request-pass/ProfileCard";
@@ -31,7 +36,8 @@ export default function RequestPassScreen() {
 
   // Zustand Stores
   const { profile, isLoadingProfile, loadProfile } = useProfileStore();
-  const { guestProfile, isLoadingGuest, loadGuestProfile } = useGuestProfileStore();
+  const { guestProfile, isLoadingGuest, loadGuestProfile } =
+    useGuestProfileStore();
   const [showRegModal, setShowRegModal] = useState<boolean>(false);
 
   const activeProfile = profile || guestProfile;
@@ -61,24 +67,33 @@ export default function RequestPassScreen() {
     vehicleNumber: string;
   }) => {
     if (!data.fullName || !data.email || !data.phone) {
-      Alert.alert("Error", "Please fill in all required fields (Name, Email, Phone).");
+      Alert.alert(
+        "Error",
+        "Please fill in all required fields (Name, Email, Phone).",
+      );
       return;
     }
 
-    registerProfile.mutate({
-      full_name: data.fullName,
-      email: data.email,
-      phone: data.phone,
-      vehicle_number: data.vehicleNumber || null,
-      notification_token: undefined,
-    }, {
-      onSuccess: () => {
-        setShowRegModal(false);
+    registerProfile.mutate(
+      {
+        full_name: data.fullName,
+        email: data.email,
+        phone: data.phone,
+        vehicle_number: data.vehicleNumber || null,
+        notification_token: undefined,
       },
-      onError: (err: any) => {
-        Alert.alert("Error saving profile", err.message || "Please try again.");
-      }
-    });
+      {
+        onSuccess: () => {
+          setShowRegModal(false);
+        },
+        onError: (err: any) => {
+          Alert.alert(
+            "Error saving profile",
+            err.message || "Please try again.",
+          );
+        },
+      },
+    );
   };
 
   const handleRequestPass = (formData: {
@@ -104,69 +119,99 @@ export default function RequestPassScreen() {
     expiryDate.setHours(expiryDate.getHours() + formData.expiryHours);
     const initialStatus = profile ? "Approved" : "Pending";
 
-    createPass.mutate({
-      user_id: activeProfile.id,
-      visitor_name: formData.visitorName,
-      visitor_email: formData.visitorEmail,
-      visitor_phone: formData.visitorPhone,
-      designation: formData.visitorDesignation,
-      tower_no: formData.towerNo,
-      flat_no: formData.flatNo,
-      status: initialStatus,
-      expiry_hours: formData.expiryHours,
-      expiry_time: expiryDate.toISOString(),
-      after_scan_qr_expiry: formData.afterScanExpiry,
-      resident_details: {
-        fullName: activeProfile.fullName,
-        email: activeProfile.email,
-        phone: activeProfile.phone,
-        societyId: formData.societyId,
-        societyName: formData.societyName,
+    createPass.mutate(
+      {
+        user_id: activeProfile.id,
+        visitor_name: formData.visitorName,
+        visitor_email: formData.visitorEmail,
+        visitor_phone: formData.visitorPhone,
+        designation: formData.visitorDesignation,
+        tower_no: formData.towerNo,
+        flat_no: formData.flatNo,
+        status: initialStatus,
+        expiry_hours: formData.expiryHours,
+        expiry_time: expiryDate.toISOString(),
+        after_scan_qr_expiry: formData.afterScanExpiry,
+        resident_details: {
+          fullName: activeProfile.fullName,
+          email: activeProfile.email,
+          phone: activeProfile.phone,
+          societyId: formData.societyId,
+          societyName: formData.societyName,
+        },
       },
-    }, {
-      onSuccess: async (newPass) => {
-        // If it's a guest request (Pending), notify the flat admin/resident
-        if (initialStatus === "Pending" && formData.flatId) {
-          try {
-            const { data: member } = await supabase
-              .from("societymembers")
-              .select("user_id")
-              .eq("flat_id", formData.flatId)
-              .maybeSingle();
+      {
+        onSuccess: async (newPass) => {
+          // If it's a guest request (Pending), notify the flat admin/resident
+          if (initialStatus === "Pending" && formData.flatId) {
+            try {
+              const { data: flatData } = await supabase
+                .from("flats")
+                .select("flat_admin_id")
+                .eq("id", formData.flatId)
+                .maybeSingle();
 
-            if (member) {
-              await supabase
-                .from("push_notifications")
-                .insert({
-                  user_id: member.user_id,
-                  title: "Visitor Approval Request 🔔",
-                  body: `${formData.visitorName} is requesting access to your flat.`,
+              if (flatData?.flat_admin_id) {
+                const { data: userData } = await supabase
+                  .from("users")
+                  .select("notification_token")
+                  .eq("id", flatData.flat_admin_id)
+                  .maybeSingle();
+
+                const notifTitle = "Visitor Approval Request 🔔";
+                const notifBody = `${formData.visitorName} is requesting access to your flat.`;
+
+                if (userData?.notification_token) {
+                  await sendPushNotification({
+                    token: userData.notification_token,
+                    title: notifTitle,
+                    body: notifBody,
+                    data: {
+                      screen: "/resident/visitors",
+                      url: "/resident/visitors",
+                    },
+                  });
+                }
+
+                await supabase.from("push_notifications").insert({
+                  user_id: flatData.flat_admin_id,
+                  title: notifTitle,
+                  body: notifBody,
                   screen: "/resident/visitors",
                   status: "Sent",
                 });
+              }
+            } catch (notifErr) {
+              console.warn(
+                "Failed to notify resident of guest pass request:",
+                notifErr,
+              );
             }
-          } catch (notifErr) {
-            console.warn("Failed to notify resident of guest pass request:", notifErr);
           }
-        }
 
-        Alert.alert(
-          initialStatus === "Approved" ? "Pass Approved" : "Access Request Sent",
-          initialStatus === "Approved"
-            ? `Pass generated successfully for ${newPass.visitor_name}.\nDestination: Greenwood Heights, Tower ${newPass.tower_no}, Flat ${newPass.flat_no}`
-            : `Your request to visit Tower ${newPass.tower_no}, Flat ${newPass.flat_no} has been sent to the resident for approval.`,
-          [
-            {
-              text: "View History",
-              onPress: () => setActiveTab("history"),
-            },
-          ]
-        );
+          Alert.alert(
+            initialStatus === "Approved"
+              ? "Pass Approved"
+              : "Access Request Sent",
+            initialStatus === "Approved"
+              ? `Pass generated successfully for ${newPass.visitor_name}.\nDestination: Greenwood Heights, Tower ${newPass.tower_no}, Flat ${newPass.flat_no}`
+              : `Your request to visit Tower ${newPass.tower_no}, Flat ${newPass.flat_no} has been sent to the resident for approval.`,
+            [
+              {
+                text: "View History",
+                onPress: () => setActiveTab("history"),
+              },
+            ],
+          );
+        },
+        onError: (err: any) => {
+          Alert.alert(
+            "Error requesting pass",
+            err.message || "Please try again.",
+          );
+        },
       },
-      onError: (err: any) => {
-        Alert.alert("Error requesting pass", err.message || "Please try again.");
-      }
-    });
+    );
   };
 
   if (isLoadingProfile || isLoadingGuest) {
@@ -186,55 +231,75 @@ export default function RequestPassScreen() {
       <View style={styles.container}>
         <StatusBar style="light" />
 
-      {/* Top Header Bar */}
-      <ScreenHeader onBack={() => router.back()} />
+        {/* Top Header Bar */}
+        <ScreenHeader onBack={() => router.back()} />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} bounces={true}>
-        {/* Profile Card Section */}
-        {activeProfile && <ProfileCard profile={activeProfile as any} />}
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          bounces={true}
+        >
+          {/* Profile Card Section */}
+          {activeProfile && <ProfileCard profile={activeProfile as any} />}
 
-        {/* Tab Selector */}
-        <View style={styles.tabBar}>
-          <TouchableOpacity
-            onPress={() => setActiveTab("request")}
-            style={[styles.tabButton, activeTab === "request" && styles.tabButtonActive]}
-          >
-            <Text style={[styles.tabButtonText, activeTab === "request" && styles.tabButtonTextActive]}>
-              Request
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setActiveTab("history")}
-            style={[styles.tabButton, activeTab === "history" && styles.tabButtonActive]}
-          >
-            <Text style={[styles.tabButtonText, activeTab === "history" && styles.tabButtonTextActive]}>
-              History
-            </Text>
-          </TouchableOpacity>
-        </View>
+          {/* Tab Selector */}
+          <View style={styles.tabBar}>
+            <TouchableOpacity
+              onPress={() => setActiveTab("request")}
+              style={[
+                styles.tabButton,
+                activeTab === "request" && styles.tabButtonActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.tabButtonText,
+                  activeTab === "request" && styles.tabButtonTextActive,
+                ]}
+              >
+                Request
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setActiveTab("history")}
+              style={[
+                styles.tabButton,
+                activeTab === "history" && styles.tabButtonActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.tabButtonText,
+                  activeTab === "history" && styles.tabButtonTextActive,
+                ]}
+              >
+                History
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-        {/* Tab 1: Request Pass Form */}
-        {activeTab === "request" && (
-          <PassRequestForm
-            isPending={createPass.isPending}
-            guestProfile={activeProfile}
-            onSubmit={handleRequestPass}
-          />
-        )}
+          {/* Tab 1: Request Pass Form */}
+          {activeTab === "request" && (
+            <PassRequestForm
+              isPending={createPass.isPending}
+              guestProfile={activeProfile}
+              onSubmit={handleRequestPass}
+            />
+          )}
 
-        {/* Tab 2: History List */}
-        {activeTab === "history" && (
-          <PassHistoryList historyList={historyList} />
-        )}
-      </ScrollView>
+          {/* Tab 2: History List */}
+          {activeTab === "history" && (
+            <PassHistoryList historyList={historyList} />
+          )}
+        </ScrollView>
 
-      {/* Profile Registration Modal */}
-      <ProfileRegModal
-        visible={showRegModal}
-        isRegistering={registerProfile.isPending}
-        onRegister={handleSaveProfile}
-        onClose={() => setShowRegModal(false)}
-      />
+        {/* Profile Registration Modal */}
+        <ProfileRegModal
+          visible={showRegModal}
+          isRegistering={registerProfile.isPending}
+          onRegister={handleSaveProfile}
+          onClose={() => setShowRegModal(false)}
+        />
       </View>
     </KeyboardAvoidingView>
   );

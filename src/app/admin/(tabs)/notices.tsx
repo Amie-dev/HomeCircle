@@ -1,21 +1,22 @@
-import React, { useState, useEffect } from "react";
+import { MaterialIcons } from "@expo/vector-icons";
+import React, { useEffect, useState } from "react";
 import {
-  StyleSheet,
-  Text,
-  View,
-  ScrollView,
-  TouchableOpacity,
-  Modal,
-  TextInput,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
-import { theme } from "../../../theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { sendPushNotification } from "../../../../utils/notificationService";
 import { supabase } from "../../../../utils/supabase";
 import { useProfileStore } from "../../../store/useProfileStore";
+import { theme } from "../../../theme";
 
 interface Notice {
   id: string;
@@ -41,6 +42,62 @@ export default function AdminNoticesAndPolls() {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<"Notices" | "Polls">("Notices");
   const { profile } = useProfileStore();
+
+  const notifyAllMembers = async (title: string, body: string, screen: string) => {
+    try {
+      const { data: members, error: memErr } = await supabase
+        .from("societymembers")
+        .select(`
+          user_id,
+          users (
+            notification_token
+          )
+        `)
+        .eq("society_id", profile?.societyId);
+
+      if (memErr) throw memErr;
+
+      if (members && members.length > 0) {
+        const promises = members.map(async (member) => {
+          const usersData = member.users;
+          const token = Array.isArray(usersData)
+            ? usersData[0]?.notification_token
+            : (usersData as any)?.notification_token;
+          if (token) {
+            try {
+              await sendPushNotification({
+                token,
+                title,
+                body,
+                data: {
+                  screen,
+                  url: screen,
+                },
+              });
+            } catch (err) {
+              console.warn(`Failed to send push to token ${token}:`, err);
+            }
+          }
+
+          try {
+            await supabase.from("push_notifications").insert({
+              user_id: member.user_id,
+              title,
+              body,
+              screen,
+              status: "Sent",
+            });
+          } catch (err) {
+            console.warn(`Failed to insert push notification log for user ${member.user_id}:`, err);
+          }
+        });
+
+        await Promise.all(promises);
+      }
+    } catch (err) {
+      console.warn("Failed to notify community members:", err);
+    }
+  };
 
   // State Lists
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -199,11 +256,15 @@ export default function AdminNoticesAndPolls() {
         .select()
         .single();
 
-      if (error) throw error;
-
       if (data) {
         const newNotice = mapDbNoticeToFrontend(data);
         setNotices([newNotice, ...notices]);
+        // Notify community members asynchronously
+        notifyAllMembers(
+          "New Community Notice 📢",
+          newNoticeTitle.trim(),
+          "/resident/community"
+        );
       }
 
       setNoticeModalVisible(false);
@@ -253,6 +314,12 @@ export default function AdminNoticesAndPolls() {
           isActive: true,
         };
         setPolls([newPoll, ...polls]);
+        // Notify community members asynchronously
+        notifyAllMembers(
+          "New Community Poll 🗳️",
+          newPollQuestion.trim(),
+          "/resident/community"
+        );
       }
 
       setPollModalVisible(false);

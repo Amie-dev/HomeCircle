@@ -2,9 +2,11 @@ import { useEffect } from "react";
 import * as Notifications from "expo-notifications";
 import { supabase } from "../../utils/supabase";
 import { useProfileStore } from "../store/useProfileStore";
+import { useRouter } from "expo-router";
 
 export function useRealtimeNotifications() {
   const { profile } = useProfileStore();
+  const router = useRouter();
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -34,13 +36,14 @@ export function useRealtimeNotifications() {
           filter: `user_id=eq.${profile.id}`,
         },
         async (payload) => {
-          const { title, body } = payload.new;
+          const { title, body, screen } = payload.new;
           console.log("RECEIVED push notification insert:", payload.new);
           try {
             await Notifications.scheduleNotificationAsync({
               content: {
                 title: title || "HomeCircle Notification 🔔",
                 body: body || "New update in society.",
+                data: { screen, url: screen },
               },
               trigger: null,
             });

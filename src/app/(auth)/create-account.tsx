@@ -18,6 +18,7 @@ import { supabase } from "../../../utils/supabase";
 import { useProfileStore } from "../../store/useProfileStore";
 import { theme } from "../../theme";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { getPushToken } from "../../../utils/pushToken";
 
 export default function CreateAccountScreen() {
   const router = useRouter();
@@ -55,6 +56,7 @@ export default function CreateAccountScreen() {
       }
 
       const userId = authData.user?.id || "temp-auth-uuid-" + Date.now();
+const token = await getPushToken();
 
       // 1b. Insert credentials into custom database users table
       const { error: dbError } = await supabase
@@ -66,6 +68,7 @@ export default function CreateAccountScreen() {
           phone: phone,
           email: email.trim(),
           password: password,
+          notification_token:token
         });
 
       if (dbError) {

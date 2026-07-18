@@ -16,6 +16,7 @@ import { StatusBar } from "expo-status-bar";
 import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../theme";
 import { supabase } from "../../../utils/supabase";
+import { sendPushNotification } from "../../../utils/notificationService";
 import { useProfileStore } from "../../store/useProfileStore";
 import { useGuestProfileStore } from "../../store/useGuestProfileStore";
 import { useRequestResidentVerify } from "../../hooks/useRequestResident";
@@ -207,6 +208,49 @@ export default function ResidentDetailsScreen() {
         towerName: towerData.name,
         flatNumber: flatData.flat_number,
       });
+
+      // Notify society admin of new resident registration
+      try {
+        const { data: adminMember } = await supabase
+          .from("societymembers")
+          .select("user_id")
+          .eq("society_id", societyData.id)
+          .eq("role", "Admin")
+          .maybeSingle();
+
+        if (adminMember?.user_id) {
+          const { data: userData } = await supabase
+            .from("users")
+            .select("notification_token")
+            .eq("id", adminMember.user_id)
+            .maybeSingle();
+
+          const notifTitle = "New Resident Registration 🔔";
+          const notifBody = `${signupData.fullName} is requesting access to unit ${towerData.name}-${flatData.flat_number}.`;
+
+          if (userData?.notification_token) {
+            await sendPushNotification({
+              token: userData.notification_token,
+              title: notifTitle,
+              body: notifBody,
+              data: {
+                screen: "/admin/residents",
+                url: "/admin/residents",
+              },
+            });
+          }
+
+          await supabase.from("push_notifications").insert({
+            user_id: adminMember.user_id,
+            title: notifTitle,
+            body: notifBody,
+            screen: "/admin/residents",
+            status: "Sent",
+          });
+        }
+      } catch (notifErr) {
+        console.warn("Failed to notify admin of resident registration request:", notifErr);
+      }
 
       // 3. Hydrate Zustand
       await setProfile({

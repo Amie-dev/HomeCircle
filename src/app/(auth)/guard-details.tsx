@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { supabase } from "../../../utils/supabase";
+import { sendPushNotification } from "../../../utils/notificationService";
 import { useGuestProfileStore } from "../../store/useGuestProfileStore";
 import { useProfileStore } from "../../store/useProfileStore";
 import { theme } from "../../theme";
@@ -97,18 +98,18 @@ export default function GuardDetailsScreen() {
     setLoading(true);
     try {
       // 1. Insert Profile into guestusers
-      const { error: insertUserErr } = await supabase
-        .from("guestusers")
-        .insert({
-          id: signupData.id,
-          full_name: signupData.fullName,
-          email: signupData.email,
-          phone: signupData.phone,
-          vehicle_number: null,
-          notification_token: null,
-        });
+      // const { error: insertUserErr } = await supabase
+      //   .from("guestusers")
+      //   .insert({
+      //     id: signupData.id,
+      //     full_name: signupData.fullName,
+      //     email: signupData.email,
+      //     phone: signupData.phone,
+      //     vehicle_number: null,
+      //     notification_token: null,
+      //   });
 
-      if (insertUserErr) throw insertUserErr;
+      // if (insertUserErr) throw insertUserErr;
 
       // 2. Insert verification request
       const { error: insertVerifyErr } = await supabase
@@ -128,6 +129,49 @@ export default function GuardDetailsScreen() {
         });
 
       if (insertVerifyErr) throw insertVerifyErr;
+
+      // Notify society admin of new guard registration
+      try {
+        const { data: adminMember } = await supabase
+          .from("societymembers")
+          .select("user_id")
+          .eq("society_id", societyData.id)
+          .eq("role", "Admin")
+          .maybeSingle();
+
+        if (adminMember?.user_id) {
+          const { data: userData } = await supabase
+            .from("users")
+            .select("notification_token")
+            .eq("id", adminMember.user_id)
+            .maybeSingle();
+
+          const notifTitle = "New Guard Registration 🔔";
+          const notifBody = `${signupData.fullName} is requesting access as a Guard.`;
+
+          if (userData?.notification_token) {
+            await sendPushNotification({
+              token: userData.notification_token,
+              title: notifTitle,
+              body: notifBody,
+              data: {
+                screen: "/admin/staff",
+                url: "/admin/staff",
+              },
+            });
+          }
+
+          await supabase.from("push_notifications").insert({
+            user_id: adminMember.user_id,
+            title: notifTitle,
+            body: notifBody,
+            screen: "/admin/staff",
+            status: "Sent",
+          });
+        }
+      } catch (notifErr) {
+        console.warn("Failed to notify admin of guard registration request:", notifErr);
+      }
 
       // 3. Hydrate Zustand
       await setProfile({

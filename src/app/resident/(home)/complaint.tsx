@@ -6,6 +6,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../../theme";
 import { useProfileStore } from "../../../store/useProfileStore";
 import { supabase } from "../../../../utils/supabase";
+import { sendPushNotification } from "../../../../utils/notificationService";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function RaiseComplaintScreen() {
@@ -93,6 +94,48 @@ export default function RaiseComplaintScreen() {
         });
 
       if (error) throw error;
+
+      // Notify society admin of new complaint ticket
+      try {
+        const { data: adminMember } = await supabase
+          .from("societymembers")
+          .select("user_id")
+          .eq("society_id", profile.societyId)
+          .eq("role", "Admin")
+          .maybeSingle();
+
+        if (adminMember?.user_id) {
+          const { data: userData } = await supabase
+            .from("users")
+            .select("notification_token")
+            .eq("id", adminMember.user_id)
+            .maybeSingle();
+
+          const notifTitle = "New Complaint Raised 🚨";
+          const notifBody = `${profile.fullName} raised a ${category} complaint: "${description.trim().substring(0, 30)}..."`;
+
+          if (userData?.notification_token) {
+            await sendPushNotification({
+              token: userData.notification_token,
+              title: notifTitle,
+              body: notifBody,
+              data: {
+                screen: "/admin/complaints",
+              },
+            });
+          }
+
+          await supabase.from("push_notifications").insert({
+            user_id: adminMember.user_id,
+            title: notifTitle,
+            body: notifBody,
+            screen: "/admin/complaints",
+            status: "Sent",
+          });
+        }
+      } catch (notifErr) {
+        console.warn("Failed to notify admin of new complaint:", notifErr);
+      }
 
       setDescription("");
       setUrgent(false);

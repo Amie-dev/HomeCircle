@@ -21,6 +21,7 @@ import { theme } from "../../../theme";
 import { useProfileStore } from "../../../store/useProfileStore";
 import { supabase } from "../../../../utils/supabase";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { sendPushNotification } from "../../../../utils/notificationService";
 
 export default function GuardScanner() {
   const router = useRouter();
@@ -212,6 +213,30 @@ export default function GuardScanner() {
             .maybeSingle();
 
           if (member) {
+            // Send push notification to resident
+            try {
+              const { data: resUserData } = await supabase
+                .from("users")
+                .select("notification_token")
+                .eq("id", member.user_id)
+                .maybeSingle();
+
+              if (resUserData?.notification_token) {
+                await sendPushNotification({
+                  token: resUserData.notification_token,
+                  title: "Visitor Checked In 🚪",
+                  body: `${pass.visitor_name} has checked in at the gate.`,
+                  data: {
+                    screen: "/resident",
+                    url: "/resident",
+                  },
+                });
+              }
+            } catch (err) {
+              console.warn("Failed to send push notification to resident:", err);
+            }
+
+            // Insert resident notification log in db
             await supabase
               .from("push_notifications")
               .insert({
@@ -225,6 +250,47 @@ export default function GuardScanner() {
         }
       } catch (notifErr) {
         console.warn("Failed to notify resident of visitor check-in:", notifErr);
+      }
+
+      // Notify visitor of check-in
+      try {
+        if (pass.user_id) {
+          // Send push notification to visitor
+          try {
+            const { data: visUserData } = await supabase
+              .from("users")
+              .select("notification_token")
+              .eq("id", pass.user_id)
+              .maybeSingle();
+
+            if (visUserData?.notification_token) {
+              await sendPushNotification({
+                token: visUserData.notification_token,
+                title: "Pass Verified ✔️",
+                body: "Your pass has been scanned and verified at the gate.",
+                data: {
+                  screen: "/request-pass",
+                  url: "/request-pass",
+                },
+              });
+            }
+          } catch (err) {
+            console.warn("Failed to send push notification to visitor:", err);
+          }
+
+          // Insert visitor notification log in db
+          await supabase
+            .from("push_notifications")
+            .insert({
+              user_id: pass.user_id,
+              title: "Pass Verified ✔️",
+              body: "Your pass has been scanned and verified at the gate.",
+              screen: "/request-pass",
+              status: "Sent",
+            });
+        }
+      } catch (visitorNotifErr) {
+        console.warn("Failed to notify visitor of check-in:", visitorNotifErr);
       }
 
       Alert.alert(
