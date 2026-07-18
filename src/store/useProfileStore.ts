@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../../utils/supabase';
 
 export interface ResidentProfile {
   id: string;
@@ -45,12 +46,69 @@ export const useProfileStore = create<ProfileState>((set) => ({
   loadProfile: async () => {
     set({ isLoadingProfile: true });
     try {
+      // 1. Quick load from AsyncStorage to get instant UI state
       const localProfileString = await AsyncStorage.getItem('user_profile');
       if (localProfileString) {
         set({ profile: JSON.parse(localProfileString) });
       }
+
+      // 2. Fetch Supabase session to check if authenticated and synchronize status
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const userId = session.user.id;
+
+        // Fetch user basic profile
+        const { data: profileData } = await supabase
+          .from("users")
+          .select("*")
+          .eq("id", userId)
+          .maybeSingle();
+
+        if (profileData) {
+          // Fetch verification status
+          const { data: verifyData } = await supabase
+            .from("userverifications")
+            .select(`
+              role,
+              is_verified,
+              society_id,
+              societies ( name ),
+              towers ( name ),
+              flats ( flat_number )
+            `)
+            .eq("user_id", userId)
+            .maybeSingle();
+
+          let role = (verifyData?.role || profileData.role) as 'Resident' | 'Guard' | 'Admin' | undefined;
+          let isVerified = verifyData?.is_verified || false;
+          let societyId = verifyData?.society_id || undefined;
+          let societyName = (verifyData?.societies as any)?.name || undefined;
+          let towerName = (verifyData?.towers as any)?.name || undefined;
+          let flatName = (verifyData?.flats as any)?.flat_number || undefined;
+
+          const syncedProfile: ResidentProfile = {
+            id: userId,
+            fullName: profileData.full_name,
+            email: profileData.email,
+            phone: profileData.phone,
+            role,
+            isVerified,
+            societyId,
+            societyName,
+            towerName,
+            flatName,
+          };
+
+          // Save synced profile to AsyncStorage and Zustand state
+          await AsyncStorage.setItem('user_profile', JSON.stringify(syncedProfile));
+          set({ profile: syncedProfile });
+        }
+      } else if (!localProfileString) {
+        // No session and no local cache, clear profile
+        set({ profile: null });
+      }
     } catch (e) {
-      console.error('Error loading profile from AsyncStorage:', e);
+      console.error('Error syncing profile with Supabase:', e);
     } finally {
       set({ isLoadingProfile: false });
     }

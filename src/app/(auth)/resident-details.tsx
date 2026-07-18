@@ -194,41 +194,19 @@ export default function ResidentDetailsScreen() {
 
     setLoading(true);
     try {
-      // 1. Insert Profile into guestusers
-      const { error: insertUserErr } = await supabase
-        .from("guestusers")
-        .insert({
-          id: signupData.id,
-          full_name: signupData.fullName,
-          email: signupData.email,
-          phone: signupData.phone,
-          vehicle_number: null,
-          notification_token: null,
-        });
-
-      if (insertUserErr) throw insertUserErr;
-
-      // 2. Insert verification request
-      const { error: insertVerifyErr } = await supabase
-        .from("userverifications")
-        .insert({
-          user_id: signupData.id,
-          role: "Resident",
-          society_id: societyData.id,
-          tower_id: towerData.id,
-          flat_id: flatData.id,
-          is_verified: false, // Needs admin approval
-          verified_by: null,
-          verify_user_id: null,
-          verified_at: null,
-          verification_details: {
-            societyName: societyData.name,
-            towerName: towerData.name,
-            flatNumber: flatData.flat_number,
-          },
-        });
-
-      if (insertVerifyErr) throw insertVerifyErr;
+      // Submit registration details and verification request via hook
+      await requestResidentVerify({
+        userId: signupData.id,
+        fullName: signupData.fullName,
+        email: signupData.email,
+        phone: signupData.phone,
+        societyId: societyData.id,
+        towerId: towerData.id,
+        flatId: flatData.id,
+        societyName: societyData.name,
+        towerName: towerData.name,
+        flatNumber: flatData.flat_number,
+      });
 
       // 3. Hydrate Zustand
       await setProfile({

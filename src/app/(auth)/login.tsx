@@ -1,23 +1,23 @@
-import React, { useState } from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  Platform,
-  KeyboardAvoidingView,
-} from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { MaterialIcons } from "@expo/vector-icons";
-import { theme } from "../../theme";
+import React, { useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../../utils/supabase";
 import { useProfileStore } from "../../store/useProfileStore";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { theme } from "../../theme";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -51,9 +51,9 @@ export default function LoginScreen() {
 
       const userId = authData.user.id;
 
-      // 2. Fetch profile from users table
+      // 2. Fetch profile from guestusers table
       const { data: profileData, error: profileError } = await supabase
-        .from("users")
+        .from("user")
         .select("*")
         .eq("email", email.trim())
         .maybeSingle();
@@ -102,17 +102,13 @@ export default function LoginScreen() {
         }
       }
 
-      // Fallback role to what was set in users table if verification request hasn't been submitted yet
-      if (!role && profileData) {
-        role = (profileData.role as any) || undefined;
-      }
-
       // 4. Save profile in Zustand
       await setProfile({
         id: userId,
         fullName: profileData?.full_name || authData.user.user_metadata?.full_name || "User",
         email: email.trim(),
         phone: profileData?.phone || "N/A",
+        vehicleNumber: profileData?.vehicle_number || undefined,
         role,
         isVerified,
         societyId,
@@ -120,11 +116,11 @@ export default function LoginScreen() {
         towerName,
         flatName,
       });
-
-      // 5. Navigate based on role
+      console.log({ role })
+      // 5. Navigate based on role & verification
       if (role === "Admin") {
         Alert.alert("Welcome Admin", "Logging into society administration dashboard.", [
-          { text: "OK", onPress: () => router.replace("/admin" as any) },
+          { text: "OK", onPress: () => router.replace("/admin/index" as any) },
         ]);
       } else if (role === "Resident") {
         if (!isVerified) {
@@ -147,6 +143,7 @@ export default function LoginScreen() {
           router.replace("/guard" as any);
         }
       } else {
+        // Fallback or Guest
         router.replace("/request-pass" as any);
       }
     } catch (err: any) {
@@ -172,7 +169,7 @@ export default function LoginScreen() {
                   towerName: "Tower A",
                   flatName: "101",
                 });
-                router.replace("/resident" as any);
+                router.replace("/(resident)" as any);
               },
             },
             { text: "Cancel", style: "cancel" },
@@ -187,123 +184,123 @@ export default function LoginScreen() {
   };
 
   return (
-     <SafeAreaView edges={["top","bottom","left",'right']} style={{flex:1}}>
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={{ flex: 1 }}
-    >
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <StatusBar style="light" />
+    <SafeAreaView edges={["top", "bottom", "left", 'right']} style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+          <StatusBar style="light" />
 
-      {/* Header Anchor */}
-      <View style={styles.header}>
-        <MaterialIcons name="security" size={48} color={theme.colors.secondary} />
-        <Text style={styles.headerTitle}>HomeCircle</Text>
-        <Text style={styles.headerSubtitle}>Securely manage your community experience.</Text>
-      </View>
-
-      {/* Form Container */}
-      <View style={styles.formContainer}>
-        {/* Email */}
-        <View style={styles.inputWrapper}>
-          <Text style={styles.inputLabel}>EMAIL ADDRESS</Text>
-          <View style={styles.inputBox}>
-            <MaterialIcons name="mail" size={20} color={theme.colors.outline} style={styles.inputIcon} />
-            <TextInput
-              style={styles.textInput}
-              placeholder="name@example.com"
-              placeholderTextColor={theme.colors.outline}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
+          {/* Header Anchor */}
+          <View style={styles.header}>
+            <MaterialIcons name="security" size={48} color={theme.colors.secondary} />
+            <Text style={styles.headerTitle}>HomeCircle</Text>
+            <Text style={styles.headerSubtitle}>Securely manage your community experience.</Text>
           </View>
-        </View>
 
-        {/* Password */}
-        <View style={styles.inputWrapper}>
-          <View style={styles.passwordHeader}>
-            <Text style={styles.inputLabel}>PASSWORD</Text>
-            <TouchableOpacity onPress={() => Alert.alert("Forgot Password", "Password reset link will be sent to your email.")}>
-              <Text style={styles.forgotText}>Forgot Password?</Text>
+          {/* Form Container */}
+          <View style={styles.formContainer}>
+            {/* Email */}
+            <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>EMAIL ADDRESS</Text>
+              <View style={styles.inputBox}>
+                <MaterialIcons name="mail" size={20} color={theme.colors.outline} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="name@example.com"
+                  placeholderTextColor={theme.colors.outline}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
+            </View>
+
+            {/* Password */}
+            <View style={styles.inputWrapper}>
+              <View style={styles.passwordHeader}>
+                <Text style={styles.inputLabel}>PASSWORD</Text>
+                <TouchableOpacity onPress={() => Alert.alert("Forgot Password", "Password reset link will be sent to your email.")}>
+                  <Text style={styles.forgotText}>Forgot Password?</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.inputBox}>
+                <MaterialIcons name="lock" size={20} color={theme.colors.outline} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="••••••••"
+                  placeholderTextColor={theme.colors.outline}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.visibilityButton}>
+                  <MaterialIcons
+                    name={showPassword ? "visibility-off" : "visibility"}
+                    size={20}
+                    color={theme.colors.outline}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Submit */}
+            <TouchableOpacity
+              onPress={handleLogin}
+              style={styles.loginButton}
+              activeOpacity={0.9}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <>
+                  <Text style={styles.loginButtonText}>Login to Account</Text>
+                  <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
+                </>
+              )}
             </TouchableOpacity>
           </View>
-          <View style={styles.inputBox}>
-            <MaterialIcons name="lock" size={20} color={theme.colors.outline} style={styles.inputIcon} />
-            <TextInput
-              style={styles.textInput}
-              placeholder="••••••••"
-              placeholderTextColor={theme.colors.outline}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              autoCapitalize="none"
-            />
-            <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.visibilityButton}>
-              <MaterialIcons
-                name={showPassword ? "visibility-off" : "visibility"}
-                size={20}
-                color={theme.colors.outline}
-              />
+
+          {/* Divider */}
+          <View style={styles.dividerRow}>
+            <View style={styles.line} />
+            <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
+            <View style={styles.line} />
+          </View>
+
+          {/* Social Login Buttons */}
+          <View style={styles.socialRow}>
+            <TouchableOpacity style={styles.socialButton} onPress={() => Alert.alert("Google Login", "Logging in with Google.")}>
+              <MaterialIcons name="g-mobiledata" size={28} color={theme.colors.primary} />
+              <Text style={styles.socialButtonText}>Google</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.socialButton} onPress={() => Alert.alert("Apple Login", "Logging in with Apple.")}>
+              <MaterialIcons name="phone-iphone" size={20} color={theme.colors.primary} />
+              <Text style={styles.socialButtonText}>Apple</Text>
             </TouchableOpacity>
           </View>
-        </View>
 
-        {/* Submit */}
-        <TouchableOpacity
-          onPress={handleLogin}
-          style={styles.loginButton}
-          activeOpacity={0.9}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color="#ffffff" />
-          ) : (
-            <>
-              <Text style={styles.loginButtonText}>Login to Account</Text>
-              <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
+          {/* Navigation Footer */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>
+              Don't have an account?{" "}
+              <Text style={styles.signUpText} onPress={() => router.push("/create-account" as any)}>
+                Sign Up
+              </Text>
+            </Text>
+          </View>
 
-      {/* Divider */}
-      <View style={styles.dividerRow}>
-        <View style={styles.line} />
-        <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
-        <View style={styles.line} />
-      </View>
-
-      {/* Social Login Buttons */}
-      <View style={styles.socialRow}>
-        <TouchableOpacity style={styles.socialButton} onPress={() => Alert.alert("Google Login", "Logging in with Google.")}>
-          <MaterialIcons name="g-mobiledata" size={28} color={theme.colors.primary} />
-          <Text style={styles.socialButtonText}>Google</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.socialButton} onPress={() => Alert.alert("Apple Login", "Logging in with Apple.")}>
-          <MaterialIcons name="phone-iphone" size={20} color={theme.colors.primary} />
-          <Text style={styles.socialButtonText}>Apple</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Navigation Footer */}
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          Don't have an account?{" "}
-          <Text style={styles.signUpText} onPress={() => router.push("/create-account" as any)}>
-            Sign Up
-          </Text>
-        </Text>
-      </View>
-
-      {/* Bottom Encrypted Badge */}
-      <View style={styles.encryptedBadge}>
-        <MaterialIcons name="verified-user" size={14} color={theme.colors.outline} />
-        <Text style={styles.encryptedText}>END-TO-END ENCRYPTED</Text>
-      </View>
-      </ScrollView>
-    </KeyboardAvoidingView></SafeAreaView>
+          {/* Bottom Encrypted Badge */}
+          <View style={styles.encryptedBadge}>
+            <MaterialIcons name="verified-user" size={14} color={theme.colors.outline} />
+            <Text style={styles.encryptedText}>END-TO-END ENCRYPTED</Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView></SafeAreaView>
   );
 }
 

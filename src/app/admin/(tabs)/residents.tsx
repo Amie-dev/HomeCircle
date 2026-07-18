@@ -15,6 +15,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../../theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Notifications from "expo-notifications";
+import { useResidentVerifications, useUpdateResidentVerification } from "../../../hooks/useRequestResident";
 
 // Configure notification behavior for when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -33,6 +34,7 @@ interface Resident {
   unit: string;
   status: "Verified" | "Pending" | "Staff";
   avatar: string | null;
+  userId?: string;
 }
 
 const mockResidents: Resident[] = [
@@ -78,7 +80,11 @@ export default function ManageResidents() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState<"All" | "Verified" | "Pending" | "Staff">("All");
 
-  // Manage resident list state locally to allow edits
+  // Query and mutation hooks for database verifications
+  const { data: dbVerifications, error: dbError } = useResidentVerifications();
+  const { mutateAsync: updateVerification } = useUpdateResidentVerification();
+
+  // Manage resident list state locally (combines database & mock fallback)
   const [residents, setResidents] = useState<Resident[]>(mockResidents);
 
   // Modal State
@@ -96,6 +102,24 @@ export default function ManageResidents() {
     }
     requestPermissions();
   }, []);
+
+  // Update local residents state when DB verifications change
+  useEffect(() => {
+    if (dbVerifications && dbVerifications.length > 0) {
+      const mapped: Resident[] = dbVerifications.map((v) => ({
+        id: v.id,
+        userId: v.user_id,
+        name: v.guestusers?.full_name || "Unknown Resident",
+        unit: `${v.verification_details?.towerName || ""}, ${v.verification_details?.flatNumber || ""}`,
+        status: (v.is_verified ? "Verified" : "Pending") as "Verified" | "Pending" | "Staff",
+        avatar: null,
+      }));
+      // Merge database records with mocks
+      setResidents([...mapped, ...mockResidents]);
+    } else {
+      setResidents(mockResidents);
+    }
+  }, [dbVerifications]);
 
   const getStatusStyle = (status: "Verified" | "Pending" | "Staff") => {
     switch (status) {
@@ -149,42 +173,64 @@ export default function ManageResidents() {
     const previousStatus = selectedResident.status;
     const newStatus = modalStatus;
 
-    // Update in local state
-    setResidents((prev) =>
-      prev.map((res) =>
-        res.id === selectedResident.id ? { ...res, status: newStatus } : res
-      )
-    );
-
     setIsModalVisible(false);
 
-    // If status changed to "Verified", send notification
-    if (newStatus === "Verified" && previousStatus !== "Verified") {
+    // Check if this resident is from Supabase (by looking for a matching verification request in dbVerifications)
+    const isDbResident = dbVerifications?.some((v) => v.id === selectedResident.id);
+
+    if (isDbResident) {
       try {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: "Verification Approved 🏠",
-            body: "Approved! You are now a flat member.",
-            data: { residentId: selectedResident.id },
-          },
-          trigger: null,
+        await updateVerification({
+          id: selectedResident.id,
+          userId: selectedResident.userId || selectedResident.id,
+          isVerified: newStatus === "Verified",
+          previousStatus: previousStatus === "Verified",
         });
+        
         Alert.alert(
           "Status Updated",
-          `${selectedResident.name} is now Verified. Push notification sent successfully.`
+          `${selectedResident.name}'s status has been successfully saved to the database.`
         );
-      } catch (error) {
-        console.warn("Failed to send push notification:", error);
-        Alert.alert(
-          "Status Updated",
-          `${selectedResident.name} is now Verified (Failed to send push notification).`
-        );
+      } catch (err: any) {
+        console.warn("Failed to update status in database:", err);
+        Alert.alert("Update Failed", err.message || "Failed to update resident status in database.");
       }
     } else {
-      Alert.alert(
-        "Status Updated",
-        `${selectedResident.name}'s status has been changed to ${newStatus}.`
+      // Offline fallback: Update in local state
+      setResidents((prev) =>
+        prev.map((res) =>
+          res.id === selectedResident.id ? { ...res, status: newStatus } : res
+        )
       );
+
+      // If status changed to "Verified", trigger push notification offline
+      if (newStatus === "Verified" && previousStatus !== "Verified") {
+        try {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "Verification Approved 🏠",
+              body: "Approved! You are now a flat member.",
+              data: { residentId: selectedResident.id },
+            },
+            trigger: null,
+          });
+          Alert.alert(
+            "Status Updated (Offline)",
+            `${selectedResident.name} is now Verified. Push notification sent.`
+          );
+        } catch (error) {
+          console.warn("Failed to send push notification:", error);
+          Alert.alert(
+            "Status Updated (Offline)",
+            `${selectedResident.name} is now Verified.`
+          );
+        }
+      } else {
+        Alert.alert(
+          "Status Updated (Offline)",
+          `${selectedResident.name}'s status has been changed to ${newStatus}.`
+        );
+      }
     }
 
     setSelectedResident(null);

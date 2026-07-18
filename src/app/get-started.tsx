@@ -16,12 +16,33 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "../theme";
 import { ChoiceCard } from "../components/get-started/ChoiceCard";
+import { useProfileStore } from "../store/useProfileStore";
 
 export default function GetStartedScreen() {
   const router = useRouter();
+  const { profile, loadProfile, isLoadingProfile } = useProfileStore();
+
   const headerOpacity = useRef(new Animated.Value(0)).current;
   const heroOpacity = useRef(new Animated.Value(0)).current;
   const heroSlide = useRef(new Animated.Value(15)).current;
+
+  React.useEffect(() => {
+    loadProfile();
+  }, []);
+
+  React.useEffect(() => {
+    if (!isLoadingProfile && profile) {
+      if (profile.role === "Resident") {
+        router.replace("/resident" as any);
+      } else if (profile.role === "Guard") {
+        router.replace("/guard" as any);
+      } else if (profile.role === "Admin") {
+        router.replace("/admin" as any);
+      } else {
+        router.replace("/request-pass" as any);
+      }
+    }
+  }, [profile, isLoadingProfile]);
 
   React.useEffect(() => {
     Animated.parallel([
