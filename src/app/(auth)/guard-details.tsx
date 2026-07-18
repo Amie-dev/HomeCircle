@@ -144,7 +144,7 @@ export default function GuardDetailsScreen() {
       Alert.alert(
         "Guard Profile Registered",
         `Details submitted for ${societyData.name} Admin approval. Gate access remains pending until verified.`,
-        [{ text: "Done", onPress: () => router.replace("/(guard)" as any) }]
+        [{ text: "Done", onPress: () => router.replace("/guard" as any) }]
       );
     } catch (err: any) {
       Alert.alert("Error registering", err.message || "Failed to complete details.");

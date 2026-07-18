@@ -116,6 +116,7 @@ export const useProfileStore = create<ProfileState>((set) => ({
   clearProfile: async () => {
     try {
       await AsyncStorage.removeItem('user_profile');
+      await supabase.auth.signOut();
       set({ profile: null, signupData: null });
     } catch (e) {
       console.error('Error clearing profile from AsyncStorage:', e);

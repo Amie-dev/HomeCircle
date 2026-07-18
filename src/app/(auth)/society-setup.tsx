@@ -166,7 +166,7 @@ export default function SocietySetupScreen() {
       Alert.alert(
         "Society Registered!",
         `Society "${societyName}" and its digital concierge are set up successfully.`,
-        [{ text: "OK", onPress: () => router.replace("/(admin)" as any) }]
+        [{ text: "OK", onPress: () => router.replace("/admin" as any) }]
       );
     } catch (err: any) {
       const message = err.message || "Failed to complete society registration";

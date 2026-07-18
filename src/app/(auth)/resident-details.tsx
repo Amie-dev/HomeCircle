@@ -225,7 +225,7 @@ export default function ResidentDetailsScreen() {
       Alert.alert(
         "Verification Submitted",
         `Details sent to ${societyData.name} Admin for verification. Once approved, you will get access.`,
-        [{ text: "Done", onPress: () => router.replace("/(resident)" as any) }]
+        [{ text: "Done", onPress: () => router.replace("/resident" as any) }]
       );
     } catch (err: any) {
       Alert.alert("Error registering", err.message || "Failed to complete details.");

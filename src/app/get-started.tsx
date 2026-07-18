@@ -29,104 +29,118 @@ export default function GetStartedScreen() {
   const headerOpacity = useRef(new Animated.Value(0)).current;
   const heroOpacity = useRef(new Animated.Value(0)).current;
   const heroSlide = useRef(new Animated.Value(15)).current;
+const configureNotificationChannel = async () => {
+  if (Platform.OS !== "android") return;
 
-  const fetchAndSaveToken = async () => {
-    try {
-      if (!Device.isDevice) {
-        console.log("Push notifications require a physical device.");
-        return;
-      }
+  await Notifications.setNotificationChannelAsync("default", {
+    name: "Default",
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: "#4979a6",
+  });
+};
 
-      if (Platform.OS === "android") {
-        await Notifications.setNotificationChannelAsync("default", {
-          name: "default",
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: "#FF231F7A",
-        });
-      }
-
-      const projectId =
-        Constants?.expoConfig?.extra?.eas?.projectId ??
-        Constants?.easConfig?.projectId;
-
-      if (!projectId) {
-        console.warn("EAS Project ID not found. Ensure app config is correct.");
-        return;
-      }
-
-      const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId,
-      });
-
-      const token = tokenData.data;
-      if (!token) return;
-
-      console.log("Expo Push Token:", token);
-
-      // Save token into 'notifications' table in Supabase
-      const { error: insertErr } = await supabase
-        .from("notifications")
-        .insert({ token })
-        .select();
-
-      if (insertErr && !insertErr.message.includes("duplicate") && insertErr.code !== "23505") {
-        console.error("Error saving token to Supabase:", insertErr.message);
-      }
-
-      // If user profile exists, update 'guestusers' to link the token
-      if (profile?.id) {
-        const { error: updateErr } = await supabase
-          .from("guestusers")
-          .update({ notification_token: token })
-          .eq("id", profile.id);
-
-        if (updateErr) {
-          console.error("Error linking token to guestuser profile:", updateErr.message);
-        }
-      }
-    } catch (err: any) {
-      console.warn("Failed to fetch or save push token:", err.message || err);
-    }
-  };
-
-  React.useEffect(() => {
-    loadProfile();
-
-    async function checkAndPromptNotifications() {
-      if (Platform.OS === "web") return;
-
-      try {
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-
-        if (existingStatus === "undetermined" || existingStatus === "denied") {
-          Alert.alert(
-            "Enable Push Notifications",
-            "Get real-time updates for visitor approvals, guard status, and community announcements directly on your device.",
-            [
-              { text: "Not Now", style: "cancel" },
-              {
-                text: "Enable",
-                onPress: async () => {
-                  const { status } = await Notifications.requestPermissionsAsync();
-                  if (status === "granted") {
-                    await fetchAndSaveToken();
-                  }
-                },
-              },
-            ]
-          );
-        } else if (existingStatus === "granted") {
-          await fetchAndSaveToken();
-        }
-      } catch (err) {
-        console.warn("Error checking notification permissions:", err);
-      }
+const fetchAndSaveToken = async () => {
+  try {
+    if (!Device.isDevice) {
+      console.warn("Push notifications require a physical device.");
+      return;
     }
 
-    checkAndPromptNotifications();
-  }, []);
+    await configureNotificationChannel();
+
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ??
+      Constants.easConfig?.projectId;
+
+    if (!projectId) {
+      console.warn("EAS Project ID not found.");
+      return;
+    }
+
+    const {
+      data: expoPushToken,
+    } = await Notifications.getExpoPushTokenAsync({
+      projectId,
+    });
+
+    if (!expoPushToken) return;
+
+    console.log("Expo Push Token:", expoPushToken);
+
+    // Save token (avoid duplicates)
+    const { error: notificationError } = await supabase
+      .from("notifications")
+      .insert({ token: expoPushToken });
+
+    if (notificationError && notificationError.code !== "23505") {
+      console.error("Error saving token to Supabase:", notificationError.message);
+    }
+
+    // Link token with current user
+    if (profile?.id) {
+      const { error } = await supabase
+        .from("guestusers")
+        .update({
+          notification_token: expoPushToken,
+        })
+        .eq("id", profile.id);
+
+      if (error) {
+        console.error(error);
+      }
+    }
+  } catch (error) {
+    console.error("Failed to register push notifications:", error);
+  }
+};
+
+const checkNotificationPermission = async () => {
+  try {
+    const { status, canAskAgain } = await Notifications.getPermissionsAsync();
+
+    if (status === "granted") {
+      await fetchAndSaveToken();
+      return;
+    }
+
+    // Only show the alert if the permission is undetermined, or if it is denied but we can still ask again.
+    // If status is denied and canAskAgain is false, the OS will block the prompt anyway, so we shouldn't show the alert.
+    if (status === "undetermined" || (status === "denied" && canAskAgain)) {
+      Alert.alert(
+        "Enable Notifications",
+        "Stay updated with visitor approvals, guest requests, security alerts, maintenance reminders, and important society announcements.",
+        [
+          {
+            text: "Not Now",
+            style: "cancel",
+          },
+          {
+            text: "Enable",
+            onPress: async () => {
+              const { status: finalStatus } =
+                await Notifications.requestPermissionsAsync();
+
+              if (finalStatus === "granted") {
+                await fetchAndSaveToken();
+              }
+            },
+          },
+        ]
+      );
+    }
+  } catch (error) {
+    console.error("Notification permission error:", error);
+  }
+};
+
+React.useEffect(() => {
+  loadProfile();
+
+  if (Platform.OS !== "web") {
+    checkNotificationPermission();
+  }
+}, []);
 
   React.useEffect(() => {
     if (!isLoadingProfile && profile) {

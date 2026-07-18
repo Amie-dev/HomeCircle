@@ -120,7 +120,7 @@ export default function LoginScreen() {
       // 5. Navigate based on role & verification
       if (role === "Admin") {
         Alert.alert("Welcome Admin", "Logging into society administration dashboard.", [
-          { text: "OK", onPress: () => router.replace("/admin/index" as any) },
+          { text: "OK", onPress: () => router.replace("/admin" as any) },
         ]);
       } else if (role === "Resident") {
         if (!isVerified) {
