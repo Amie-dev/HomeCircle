@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -8,10 +8,24 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  Modal,
+  Pressable,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../../theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Notifications from "expo-notifications";
+
+// Configure notification behavior for when the app is in the foreground
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 interface Resident {
   id: string;
@@ -64,6 +78,25 @@ export default function ManageResidents() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState<"All" | "Verified" | "Pending" | "Staff">("All");
 
+  // Manage resident list state locally to allow edits
+  const [residents, setResidents] = useState<Resident[]>(mockResidents);
+
+  // Modal State
+  const [selectedResident, setSelectedResident] = useState<Resident | null>(null);
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [modalStatus, setModalStatus] = useState<"Verified" | "Pending" | "Staff">("Pending");
+
+  // Request notifications permissions on component mount
+  useEffect(() => {
+    async function requestPermissions() {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== "granted") {
+        await Notifications.requestPermissionsAsync();
+      }
+    }
+    requestPermissions();
+  }, []);
+
   const getStatusStyle = (status: "Verified" | "Pending" | "Staff") => {
     switch (status) {
       case "Verified":
@@ -93,7 +126,7 @@ export default function ManageResidents() {
     return name.slice(0, 2).toUpperCase();
   };
 
-  const filteredResidents = mockResidents.filter((resident) => {
+  const filteredResidents = residents.filter((resident) => {
     const matchesSearch =
       resident.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       resident.unit.toLowerCase().includes(searchQuery.toLowerCase());
@@ -105,7 +138,56 @@ export default function ManageResidents() {
   });
 
   const handleResidentPress = (resident: Resident) => {
-    Alert.alert("Resident Profile", `Name: ${resident.name}\nUnit: ${resident.unit}\nStatus: ${resident.status}`);
+    setSelectedResident(resident);
+    setModalStatus(resident.status);
+    setIsModalVisible(true);
+  };
+
+  const handleSaveStatus = async () => {
+    if (!selectedResident) return;
+
+    const previousStatus = selectedResident.status;
+    const newStatus = modalStatus;
+
+    // Update in local state
+    setResidents((prev) =>
+      prev.map((res) =>
+        res.id === selectedResident.id ? { ...res, status: newStatus } : res
+      )
+    );
+
+    setIsModalVisible(false);
+
+    // If status changed to "Verified", send notification
+    if (newStatus === "Verified" && previousStatus !== "Verified") {
+      try {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "Verification Approved 🏠",
+            body: "Approved! You are now a flat member.",
+            data: { residentId: selectedResident.id },
+          },
+          trigger: null,
+        });
+        Alert.alert(
+          "Status Updated",
+          `${selectedResident.name} is now Verified. Push notification sent successfully.`
+        );
+      } catch (error) {
+        console.warn("Failed to send push notification:", error);
+        Alert.alert(
+          "Status Updated",
+          `${selectedResident.name} is now Verified (Failed to send push notification).`
+        );
+      }
+    } else {
+      Alert.alert(
+        "Status Updated",
+        `${selectedResident.name}'s status has been changed to ${newStatus}.`
+      );
+    }
+
+    setSelectedResident(null);
   };
 
   const handleAddResident = () => {
@@ -230,6 +312,126 @@ export default function ManageResidents() {
       >
         <MaterialIcons name="add" size={28} color={theme.colors.onSecondary} />
       </TouchableOpacity>
+
+      {/* Resident Details Modal */}
+      <Modal
+        visible={isModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setIsModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setIsModalVisible(false)}
+        >
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            {selectedResident && (
+              <>
+                {/* Header */}
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalHeaderTitle}>Resident Details</Text>
+                  <TouchableOpacity
+                    onPress={() => setIsModalVisible(false)}
+                    style={styles.closeButton}
+                  >
+                    <MaterialIcons name="close" size={24} color={theme.colors.primary} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Profile Section */}
+                <View style={styles.modalProfileSection}>
+                  {selectedResident.avatar ? (
+                    <Image
+                      source={{ uri: selectedResident.avatar }}
+                      style={styles.modalAvatar}
+                    />
+                  ) : (
+                    <View style={styles.modalAvatarFallback}>
+                      <Text style={styles.modalAvatarFallbackText}>
+                        {getInitials(selectedResident.name)}
+                      </Text>
+                    </View>
+                  )}
+                  <Text style={styles.modalName}>{selectedResident.name}</Text>
+                  <Text style={styles.modalUnit}>{selectedResident.unit}</Text>
+                </View>
+
+                {/* Status Selection */}
+                <View style={styles.statusSection}>
+                  <Text style={styles.statusSectionTitle}>Update Verification Status</Text>
+                  <View style={styles.statusOptionRow}>
+                    {(["Pending", "Verified", "Staff"] as const).map((status) => {
+                      const isActive = modalStatus === status;
+                      let activeColor = theme.colors.outline;
+                      let activeBg = theme.colors.surfaceContainer;
+
+                      if (status === "Verified") {
+                        activeColor = theme.colors.secondary;
+                        activeBg = "rgba(0, 106, 97, 0.1)";
+                      } else if (status === "Pending") {
+                        activeColor = theme.colors.error;
+                        activeBg = "rgba(186, 26, 26, 0.1)";
+                      } else if (status === "Staff") {
+                        activeColor = theme.colors.onSurfaceVariant;
+                        activeBg = "rgba(124, 131, 155, 0.15)";
+                      }
+
+                      return (
+                        <TouchableOpacity
+                          key={status}
+                          style={[
+                            styles.statusOptionButton,
+                            isActive && {
+                              borderColor: activeColor,
+                              backgroundColor: activeBg,
+                            },
+                          ]}
+                          onPress={() => setModalStatus(status)}
+                        >
+                          <View
+                            style={[
+                              styles.statusDot,
+                              {
+                                backgroundColor: isActive
+                                  ? activeColor
+                                  : theme.colors.outlineVariant,
+                              },
+                            ]}
+                          />
+                          <Text
+                            style={[
+                              styles.statusOptionText,
+                              isActive && { color: activeColor, fontWeight: "700" },
+                            ]}
+                          >
+                            {status}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Actions */}
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.cancelBtn]}
+                    onPress={() => setIsModalVisible(false)}
+                  >
+                    <Text style={styles.cancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.saveBtn]}
+                    onPress={handleSaveStatus}
+                  >
+                    <Text style={styles.saveBtnText}>Save Changes</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -427,5 +629,136 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
     zIndex: 40,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    borderTopLeftRadius: theme.rounded.xl,
+    borderTopRightRadius: theme.rounded.xl,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.lg,
+    paddingBottom: theme.spacing.xl,
+    minHeight: 400,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: theme.spacing.lg,
+  },
+  modalHeaderTitle: {
+    ...theme.typography.headlineMd,
+    color: theme.colors.primary,
+    fontWeight: "700",
+  },
+  closeButton: {
+    padding: 4,
+  },
+  modalProfileSection: {
+    alignItems: "center",
+    marginBottom: theme.spacing.xl,
+  },
+  modalAvatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 3,
+    borderColor: theme.colors.secondaryContainer,
+    marginBottom: theme.spacing.sm,
+  },
+  modalAvatarFallback: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: theme.colors.surfaceContainerHigh,
+    borderWidth: 3,
+    borderColor: theme.colors.outlineVariant,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: theme.spacing.sm,
+  },
+  modalAvatarFallbackText: {
+    ...theme.typography.headlineMd,
+    color: theme.colors.primary,
+    fontWeight: "700",
+  },
+  modalName: {
+    ...theme.typography.headlineMd,
+    fontWeight: "700",
+    color: theme.colors.primary,
+  },
+  modalUnit: {
+    ...theme.typography.bodyMd,
+    color: theme.colors.onSurfaceVariant,
+    marginTop: 4,
+  },
+  statusSection: {
+    marginBottom: theme.spacing.xl,
+  },
+  statusSectionTitle: {
+    ...theme.typography.bodyLg,
+    fontWeight: "600",
+    color: theme.colors.primary,
+    marginBottom: theme.spacing.md,
+  },
+  statusOptionRow: {
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between",
+  },
+  statusOptionButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: theme.rounded.md,
+    borderWidth: 1.5,
+    borderColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surfaceContainerLow,
+    gap: 6,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusOptionText: {
+    ...theme.typography.bodyMd,
+    color: theme.colors.onSurfaceVariant,
+    fontWeight: "500",
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  actionBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: theme.rounded.md,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  cancelBtn: {
+    backgroundColor: theme.colors.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+  },
+  cancelBtnText: {
+    ...theme.typography.button,
+    color: theme.colors.onSurfaceVariant,
+  },
+  saveBtn: {
+    backgroundColor: theme.colors.secondary,
+  },
+  saveBtnText: {
+    ...theme.typography.button,
+    color: theme.colors.onSecondary,
+    fontWeight: "700",
   },
 });

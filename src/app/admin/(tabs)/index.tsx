@@ -96,7 +96,11 @@ export default function AdminDashboard() {
         {/* Bento Grid Stats */}
         <View style={styles.statsGrid}>
           {/* Card 1 */}
-          <View style={styles.statCard}>
+          <TouchableOpacity
+            style={styles.statCard}
+            onPress={() => router.push("/(global)/visitor-log" as any)}
+            activeOpacity={0.7}
+          >
             <View style={styles.statHeader}>
               <View style={[styles.statIconBox, { backgroundColor: "rgba(0, 106, 97, 0.1)" }]}>
                 <MaterialIcons name="group" size={20} color={theme.colors.secondary} />
@@ -107,10 +111,14 @@ export default function AdminDashboard() {
               <Text style={styles.statCardLabel}>Today's Visitors</Text>
               <Text style={styles.statCardValue}>142</Text>
             </View>
-          </View>
+          </TouchableOpacity>
 
           {/* Card 2 */}
-          <View style={styles.statCard}>
+          <TouchableOpacity
+            style={styles.statCard}
+            onPress={() => router.push("/admin/(home)/staff" as any)}
+            activeOpacity={0.7}
+          >
             <View style={styles.statHeader}>
               <View style={[styles.statIconBox, { backgroundColor: "rgba(124, 131, 155, 0.1)" }]}>
                 <MaterialIcons name="engineering" size={20} color={theme.colors.onSurfaceVariant} />
@@ -121,10 +129,14 @@ export default function AdminDashboard() {
               <Text style={styles.statCardLabel}>Active Staff</Text>
               <Text style={styles.statCardValue}>24</Text>
             </View>
-          </View>
+          </TouchableOpacity>
 
           {/* Card 3 */}
-          <View style={styles.statCard}>
+          <TouchableOpacity
+            style={styles.statCard}
+            onPress={() => router.push("/admin/(home)/complaints" as any)}
+            activeOpacity={0.7}
+          >
             <View style={styles.statHeader}>
               <View style={[styles.statIconBox, { backgroundColor: "rgba(186, 26, 26, 0.1)" }]}>
                 <MaterialIcons name="report-problem" size={20} color={theme.colors.error} />
@@ -135,10 +147,14 @@ export default function AdminDashboard() {
               <Text style={styles.statCardLabel}>Open Complaints</Text>
               <Text style={styles.statCardValue}>08</Text>
             </View>
-          </View>
+          </TouchableOpacity>
 
           {/* Card 4 */}
-          <View style={styles.statCard}>
+          <TouchableOpacity
+            style={styles.statCard}
+            onPress={() => router.push("/admin/(home)/dues" as any)}
+            activeOpacity={0.7}
+          >
             <View style={styles.statHeader}>
               <View style={[styles.statIconBox, { backgroundColor: "rgba(0, 0, 0, 0.05)" }]}>
                 <MaterialIcons name="payments" size={20} color={theme.colors.primary} />
@@ -149,7 +165,7 @@ export default function AdminDashboard() {
               <Text style={styles.statCardLabel}>Pending Dues</Text>
               <Text style={styles.statCardValue}>$4.2k</Text>
             </View>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Visitor Frequency Chart & Quick Actions (Grid/Stack layout) */}
@@ -223,7 +239,7 @@ export default function AdminDashboard() {
 
               <TouchableOpacity
                 style={styles.actionButton}
-                onPress={() => handleQuickAction("Post Notice")}
+                onPress={() => router.push("/admin/(tabs)/notices" as any)}
                 activeOpacity={0.7}
               >
                 <View style={styles.actionLeft}>
@@ -235,7 +251,7 @@ export default function AdminDashboard() {
 
               <TouchableOpacity
                 style={styles.actionButton}
-                onPress={() => handleQuickAction("View Logs")}
+                onPress={() => router.push("/(global)/visitor-log" as any)}
                 activeOpacity={0.7}
               >
                 <View style={styles.actionLeft}>

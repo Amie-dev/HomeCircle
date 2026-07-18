@@ -18,10 +18,12 @@ import { theme } from "../../theme";
 import { supabase } from "../../../utils/supabase";
 import { useProfileStore } from "../../store/useProfileStore";
 import { useGuestProfileStore } from "../../store/useGuestProfileStore";
+import { useRequestResidentVerify } from "../../hooks/useRequestResident";
 
 export default function ResidentDetailsScreen() {
   const router = useRouter();
   const { signupData, setProfile } = useProfileStore();
+  const { mutateAsync: requestResidentVerify } = useRequestResidentVerify();
 
   const [societyQuery, setSocietyQuery] = useState("");
   const [towerQuery, setTowerQuery] = useState("");
