@@ -18,7 +18,7 @@ export default function MaintenanceDuesScreen() {
 
   return (
     <View style={styles.outerContainer}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
 
       {/* Top App Bar */}
       <View style={styles.topAppBar}>

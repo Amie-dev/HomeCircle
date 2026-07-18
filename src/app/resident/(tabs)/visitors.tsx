@@ -121,7 +121,7 @@ export default function VisitorsScreen() {
 
   return (
     <View style={styles.outerContainer}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
 
       {/* Top App Bar */}
       <View style={styles.topAppBar}>
