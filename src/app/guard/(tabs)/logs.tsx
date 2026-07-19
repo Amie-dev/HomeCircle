@@ -37,10 +37,10 @@ export default function GuardLogs() {
             id,
             visitor_name,
             designation,
-            phone_number,
+            phone_number:visitor_phone,
             tower_no,
             flat_no,
-            vehicle_no
+            resident_details
           )
         `)
         .eq("requestpasses.resident_details->>societyId", profile.societyId)
@@ -66,13 +66,14 @@ export default function GuardLogs() {
   const filteredLogs = logs.filter((log) => {
     const p = log.requestpasses;
     const query = searchQuery.toLowerCase();
+    const vehicleNumber = p?.resident_details?.vehicleNumber || p?.resident_details?.vehicleNo || "";
     return (
       p?.visitor_name?.toLowerCase().includes(query) ||
       p?.designation?.toLowerCase().includes(query) ||
       p?.tower_no?.toLowerCase().includes(query) ||
       p?.flat_no?.toLowerCase().includes(query) ||
       p?.phone_number?.toLowerCase().includes(query) ||
-      (p?.vehicle_no && p.vehicle_no.toLowerCase().includes(query))
+      vehicleNumber.toLowerCase().includes(query)
     );
   });
 
@@ -126,8 +127,10 @@ export default function GuardLogs() {
                         <Text style={styles.logDetails}>
                           {p?.designation} • Unit {p?.tower_no}-{p?.flat_no}
                         </Text>
-                        {p?.vehicle_no && (
-                          <Text style={styles.logVehicle}>Vehicle: {p.vehicle_no}</Text>
+                        {(p?.resident_details?.vehicleNumber || p?.resident_details?.vehicleNo) && (
+                          <Text style={styles.logVehicle}>
+                            Vehicle: {p.resident_details.vehicleNumber || p.resident_details.vehicleNo}
+                          </Text>
                         )}
                         <Text style={styles.logContact}>Phone: {p?.phone_number}</Text>
                       </View>

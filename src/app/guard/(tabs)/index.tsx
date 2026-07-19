@@ -44,6 +44,29 @@ export default function GuardScanner() {
 
   const [recentLogs, setRecentLogs] = useState<any[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [gateName, setGateName] = useState("Main Gate");
+
+  useEffect(() => {
+    const fetchActiveGate = async () => {
+      if (!profile?.id) return;
+      try {
+        const { data, error } = await supabase
+          .from("guard_assignments")
+          .select("gate_name")
+          .eq("guard_id", profile.id)
+          .maybeSingle();
+
+        if (error) throw error;
+        if (data?.gate_name) {
+          setGateName(data.gate_name);
+        }
+      } catch (err: any) {
+        console.error("Error fetching guard assignment gate name:", err.message);
+      }
+    };
+
+    fetchActiveGate();
+  }, [profile?.id]);
 
   const scanLineAnim = useRef(new Animated.Value(0)).current;
 
@@ -179,8 +202,9 @@ export default function GuardScanner() {
         .from("visitor_logs")
         .insert({
           pass_id: pass.id,
-          guard_id: profile.id,
+          logged_by: profile.id,
           action_type: "Check-in",
+          gate_name: gateName,
         });
 
       if (logErr) throw logErr;
@@ -324,19 +348,21 @@ export default function GuardScanner() {
       const { data: pass, error: passErr } = await supabase
         .from("requestpasses")
         .insert({
+          user_id: profile.id,
           visitor_name: visitorName.trim(),
-          phone_number: phone.trim(),
+          visitor_phone: phone.trim(),
+          visitor_email: "walkin@homecircle.com",
           designation,
           tower_no: towerNo.trim(),
           flat_no: flatNo.trim(),
-          vehicle_no: vehicleNo.trim() || null,
           status: "Verified",
-          valid_until: validUntil.toISOString(),
+          expiry_time: validUntil.toISOString(),
           verified_at: new Date().toISOString(),
           verified_by: profile.fullName,
           resident_details: {
             societyId: profile.societyId,
             creatorRole: "Guard",
+            vehicleNumber: vehicleNo.trim() || null,
           },
         })
         .select()
@@ -349,8 +375,9 @@ export default function GuardScanner() {
         .from("visitor_logs")
         .insert({
           pass_id: pass.id,
-          guard_id: profile.id,
+          logged_by: profile.id,
           action_type: "Check-in",
+          gate_name: gateName,
         });
 
       if (logErr) throw logErr;
