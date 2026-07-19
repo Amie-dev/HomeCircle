@@ -20,6 +20,7 @@ import { theme } from "../../../theme";
 import { useProfileStore } from "../../../store/useProfileStore";
 import { supabase } from "../../../../utils/supabase";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import NoticeDetailBottomSheet, { NoticeDetail } from "../../../components/NoticeDetailBottomSheet";
 
 export default function CommunityHubScreen() {
   const insets = useSafeAreaInsets();
@@ -44,6 +45,30 @@ export default function CommunityHubScreen() {
   const [ticketDescription, setTicketDescription] = useState("");
   const [ticketUrgent, setTicketUrgent] = useState(false);
   const [submittingTicket, setSubmittingTicket] = useState(false);
+
+  // Notice detail bottom sheet
+  const [selectedNotice, setSelectedNotice] = useState<NoticeDetail | null>(null);
+  const [noticeSheetVisible, setNoticeSheetVisible] = useState(false);
+
+  const openNoticeSheet = (n: any, parsed: { category: string; content: string }) => {
+    const isUrgent = n.category === "Urgent";
+    setSelectedNotice({
+      id: n.id,
+      title: n.title,
+      category: isUrgent ? "Urgent" : parsed.category,
+      content: parsed.content,
+      date: new Date(n.created_at).toLocaleDateString("en-IN", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      author: "Admin Team",
+      isUrgent,
+    });
+    setNoticeSheetVisible(true);
+  };
 
   const fetchNotices = async () => {
     if (!profile?.societyId) return;
@@ -269,7 +294,12 @@ export default function CommunityHubScreen() {
                 const parsed = parseDescription(n.description);
                 const isUrgent = n.category === "Urgent";
                 return (
-                  <View key={n.id} style={styles.noticeCard}>
+                  <TouchableOpacity
+                    key={n.id}
+                    style={styles.noticeCard}
+                    onPress={() => openNoticeSheet(n, parsed)}
+                    activeOpacity={0.8}
+                  >
                     {isUrgent && (
                       <View style={styles.urgentBadge}>
                         <Text style={styles.urgentBadgeText}>URGENT</Text>
@@ -287,10 +317,10 @@ export default function CommunityHubScreen() {
                       </View>
                     </View>
                     <Text style={styles.noticeDesc} numberOfLines={2}>{parsed.content}</Text>
-                    <TouchableOpacity style={styles.noticeActionBtn} onPress={() => Alert.alert(n.title, parsed.content)}>
+                    <TouchableOpacity style={styles.noticeActionBtn} onPress={() => openNoticeSheet(n, parsed)}>
                       <Text style={styles.noticeActionText}>Read Details</Text>
                     </TouchableOpacity>
-                  </View>
+                  </TouchableOpacity>
                 );
               })}
             </ScrollView>
@@ -536,6 +566,12 @@ export default function CommunityHubScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
+      {/* Notice Detail Bottom Sheet */}
+      <NoticeDetailBottomSheet
+        notice={selectedNotice}
+        visible={noticeSheetVisible}
+        onClose={() => setNoticeSheetVisible(false)}
+      />
     </View>
   );
 }

@@ -1,8 +1,10 @@
 import { MaterialIcons } from "@expo/vector-icons";
+import { useFocusEffect } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  Animated,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -14,6 +16,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import NoticeDetailBottomSheet, { NoticeDetail } from "../../../components/NoticeDetailBottomSheet";
 import { sendPushNotification } from "../../../../utils/notificationService";
 import { supabase } from "../../../../utils/supabase";
 import { useProfileStore } from "../../../store/useProfileStore";
@@ -105,9 +108,55 @@ export default function AdminNoticesAndPolls() {
   const [polls, setPolls] = useState<Poll[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Spinning animation for refresh button
+  const spinAnim = useRef(new Animated.Value(0)).current;
+  const spinLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  const startSpin = () => {
+    spinAnim.setValue(0);
+    spinLoopRef.current = Animated.loop(
+      Animated.timing(spinAnim, {
+        toValue: 1,
+        duration: 700,
+        useNativeDriver: true,
+      }),
+    );
+    spinLoopRef.current.start();
+  };
+
+  const stopSpin = () => {
+    spinLoopRef.current?.stop();
+    Animated.timing(spinAnim, {
+      toValue: 0,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const spinInterpolate = spinAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+
   // Modal states
   const [noticeModalVisible, setNoticeModalVisible] = useState(false);
   const [pollModalVisible, setPollModalVisible] = useState(false);
+
+  // Notice detail bottom sheet
+  const [selectedNotice, setSelectedNotice] = useState<NoticeDetail | null>(null);
+  const [noticeSheetVisible, setNoticeSheetVisible] = useState(false);
+
+  const openNoticeSheet = (notice: Notice) => {
+    setSelectedNotice({
+      id: notice.id,
+      title: notice.title,
+      category: notice.category,
+      content: notice.content,
+      date: notice.date,
+      author: notice.author,
+    });
+    setNoticeSheetVisible(true);
+  };
 
   // Form states
   const [newNoticeTitle, setNewNoticeTitle] = useState("");
@@ -235,6 +284,31 @@ export default function AdminNoticesAndPolls() {
     }
   }, [profile?.societyId]);
 
+  // Auto-refresh when admin navigates to this screen
+  useFocusEffect(
+    useCallback(() => {
+      if (profile?.societyId) {
+        setLoading(true);
+        Promise.all([fetchNotices(), fetchPolls()]).finally(() => setLoading(false));
+      }
+    }, [profile?.societyId]),
+  );
+
+  // Spin icon while loading
+  useEffect(() => {
+    if (loading) {
+      startSpin();
+    } else {
+      stopSpin();
+    }
+  }, [loading]);
+
+  const handleRefresh = () => {
+    if (!profile?.societyId || loading) return;
+    setLoading(true);
+    Promise.all([fetchNotices(), fetchPolls()]).finally(() => setLoading(false));
+  };
+
   const handleCreateNotice = async () => {
     if (!newNoticeTitle.trim() || !newNoticeContent.trim()) {
       Alert.alert("Missing Fields", "Please enter notice title and details.");
@@ -350,10 +424,25 @@ export default function AdminNoticesAndPolls() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* TopAppBar */}
       <StatusBar style="dark" />
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Notices & Polls</Text>
+        <View style={styles.headerTitleRow}>
+          <Text style={styles.headerTitle}>Notices & Polls</Text>
+          <TouchableOpacity
+            style={styles.refreshBtn}
+            onPress={handleRefresh}
+            disabled={loading}
+            activeOpacity={0.7}
+          >
+            <Animated.View style={{ transform: [{ rotate: spinInterpolate }] }}>
+              <MaterialIcons
+                name="refresh"
+                size={22}
+                color={loading ? theme.colors.secondary : theme.colors.primary}
+              />
+            </Animated.View>
+          </TouchableOpacity>
+        </View>
         <View style={styles.tabToggle}>
           <TouchableOpacity
             style={[styles.tabButton, activeTab === "Notices" && styles.tabButtonActive]}
@@ -390,7 +479,12 @@ export default function AdminNoticesAndPolls() {
             {notices.map((notice) => {
               const catStyles = getCategoryColor(notice.category);
               return (
-                <View key={notice.id} style={styles.card}>
+                <TouchableOpacity
+                  key={notice.id}
+                  style={styles.card}
+                  onPress={() => openNoticeSheet(notice)}
+                  activeOpacity={0.75}
+                >
                   <View style={styles.cardHeader}>
                     <Text style={styles.cardTitle}>{notice.title}</Text>
                     <View style={[styles.categoryBadge, { backgroundColor: catStyles.bg }]}>
@@ -399,7 +493,7 @@ export default function AdminNoticesAndPolls() {
                       </Text>
                     </View>
                   </View>
-                  <Text style={styles.cardContent}>{notice.content}</Text>
+                  <Text style={styles.cardContent} numberOfLines={2}>{notice.content}</Text>
                   <View style={styles.cardFooter}>
                     <View style={styles.footerLeft}>
                       <MaterialIcons name="person" size={14} color={theme.colors.outline} />
@@ -410,7 +504,7 @@ export default function AdminNoticesAndPolls() {
                       <Text style={styles.footerText}>{notice.date}</Text>
                     </View>
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -638,6 +732,12 @@ export default function AdminNoticesAndPolls() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      {/* Notice Detail Bottom Sheet */}
+      <NoticeDetailBottomSheet
+        notice={selectedNotice}
+        visible={noticeSheetVisible}
+        onClose={() => setNoticeSheetVisible(false)}
+      />
     </View>
   );
 }
@@ -660,6 +760,24 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     marginTop: 12,
     marginBottom: 12,
+    flex: 1,
+  },
+  headerTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  refreshBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: theme.colors.surfaceContainerLow,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
   },
   tabToggle: {
     flexDirection: "row",

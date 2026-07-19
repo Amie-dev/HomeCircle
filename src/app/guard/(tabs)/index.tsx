@@ -184,7 +184,7 @@ export default function GuardScanner() {
       }
 
       // Check if it is expired
-      const expiryDate = pass.valid_until || pass.expiry_time;
+      const expiryDate = pass.expiry_time;
       const validUntil = new Date(expiryDate);
       if (validUntil.getTime() < Date.now()) {
         Alert.alert(
@@ -656,7 +656,7 @@ export default function GuardScanner() {
         <View style={styles.recentSection}>
           <View style={styles.recentHeader}>
             <Text style={styles.recentTitle}>Recent Entries</Text>
-            <TouchableOpacity onPress={() => router.push("/guard/logs" as any)}>
+            <TouchableOpacity onPress={() => router.push("/guard/(tabs)/logs" as any)}>
               <Text style={styles.viewAllText}>View Log</Text>
             </TouchableOpacity>
           </View>

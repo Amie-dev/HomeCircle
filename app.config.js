@@ -4,19 +4,19 @@ const IS_PREVIEW = process.env.APP_VARIANT === "preview";
 
 const getAppName = () => {
   if (IS_DEV) return "HomeCircle (Dev)";
-  if (IS_PREVIEW) return "HomeCircle (Preview)";
+  if (IS_PREVIEW) return "HomeCircle";
   return "HomeCircle";
 };
 
 const getBundleIdentifier = () => {
   if (IS_DEV) return "com.amie.HomeCircle.dev";
-  if (IS_PREVIEW) return "com.amie.HomeCircle.preview";
+  if (IS_PREVIEW) return "com.amie.HomeCircle";
   return "com.amie.HomeCircle";
 };
 
 const getPackageName = () => {
   if (IS_DEV) return "com.amie.HomeCircle.dev";
-  if (IS_PREVIEW) return "com.amie.HomeCircle.preview";
+  if (IS_PREVIEW) return "com.amie.HomeCircle";
   return "com.amie.HomeCircle";
 };
 
@@ -35,7 +35,7 @@ const config = {
   splash: {
     image: "./assets/images/splash-icon.png",
     resizeMode: "contain",
-    backgroundColor: "#208AEF",
+    backgroundColor: "#4e6d8a",
   },
 
   ios: {

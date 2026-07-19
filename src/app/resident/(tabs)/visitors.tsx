@@ -1,11 +1,13 @@
 import { MaterialIcons } from "@expo/vector-icons";
+import { useFocusEffect } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Image,
   ImageBackground,
   ScrollView,
@@ -28,6 +30,36 @@ export default function VisitorsScreen() {
     "approvals",
   );
 
+  // Spinning animation for the refresh button
+  const spinAnim = useRef(new Animated.Value(0)).current;
+  const spinLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  const startSpin = () => {
+    spinAnim.setValue(0);
+    spinLoopRef.current = Animated.loop(
+      Animated.timing(spinAnim, {
+        toValue: 1,
+        duration: 700,
+        useNativeDriver: true,
+      }),
+    );
+    spinLoopRef.current.start();
+  };
+
+  const stopSpin = () => {
+    spinLoopRef.current?.stop();
+    Animated.timing(spinAnim, {
+      toValue: 0,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const spinInterpolate = spinAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+
   console.log("DEBUG [visitors.tsx] Render state:", {
     profileId: profile?.id,
     role: profile?.role,
@@ -38,7 +70,7 @@ export default function VisitorsScreen() {
   });
 
   // Fetch visitor history/live data
-  const { data: historyList = [], isLoading } = usePassesHistory(
+  const { data: historyList = [], isLoading, isFetching } = usePassesHistory(
     profile?.id,
     profile?.role,
     profile?.societyId,
@@ -78,6 +110,35 @@ export default function VisitorsScreen() {
       supabase.removeChannel(channel);
     };
   }, [profile?.flatName]);
+
+  // Auto-refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      queryClient.invalidateQueries({ queryKey: ["passesHistory"] });
+    }, []),
+  );
+
+  // Spin icon while fetching (covers both initial load AND manual refresh)
+  useEffect(() => {
+    if (isFetching) {
+      startSpin();
+    } else {
+      stopSpin();
+    }
+  }, [isFetching]);
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    if (isFetching) return;
+    setIsRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: ["passesHistory"] });
+    } finally {
+      // React Query handles the loading state; reset our flag after a short delay
+      setTimeout(() => setIsRefreshing(false), 800);
+    }
+  };
 
   // Mutation to approve/reject passes
   const updatePassStatusMutation = useMutation({
@@ -276,14 +337,20 @@ export default function VisitorsScreen() {
           </TouchableOpacity>
           <Text style={styles.appBarTitle}>Visitors</Text>
         </View>
-        <View style={styles.avatarWrapper}>
-          <Image
-            source={{
-              uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuBpENPfhgHlo_-hu2vi1Sc5hsmLyBkd9YdJ4Riy5fesm5hg7LPpFpSbxshtBeoGbSvYTuzHRlhihNX954tK0nIkiH6LhG_D7uawfL81dzMLjqpuuOVlmBE0WhSilez3nQn9058Jc9NOKrvtX3IlWqV9-ApnOZYBLuYdg3ZIBF24ZfEPeIl9Yv2FWD4M58l8_h0PbDJvpRas8dptC9rM3IZox3S7Z3MuX5WUda6u6EHusPxAQ_4dqAttbA",
-            }}
-            style={styles.avatar}
-          />
-        </View>
+        <TouchableOpacity
+          style={styles.refreshBtn}
+          onPress={handleRefresh}
+          disabled={isFetching || isRefreshing}
+          activeOpacity={0.7}
+        >
+          <Animated.View style={{ transform: [{ rotate: spinInterpolate }] }}>
+            <MaterialIcons
+              name="refresh"
+              size={22}
+              color={(isFetching || isRefreshing) ? theme.colors.secondary : theme.colors.primary}
+            />
+          </Animated.View>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -721,17 +788,15 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontWeight: "700",
   },
-  avatarWrapper: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    overflow: "hidden",
+  refreshBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: theme.colors.surfaceContainerLow,
+    justifyContent: "center",
+    alignItems: "center",
     borderWidth: 1,
     borderColor: theme.colors.outlineVariant,
-  },
-  avatar: {
-    width: "100%",
-    height: "100%",
   },
   tabContainer: {
     flexDirection: "row",

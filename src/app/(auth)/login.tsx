@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { getExpoPushToken } from "../../../utils/getExpoPushToken";
 import { supabase } from "../../../utils/supabase";
 import { useProfileStore } from "../../store/useProfileStore";
 import { theme } from "../../theme";
@@ -36,10 +37,11 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       // 1. Supabase Auth login
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+      const { data: authData, error: authError } =
+        await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
 
       if (authError) {
         throw new Error(authError.message);
@@ -50,20 +52,44 @@ export default function LoginScreen() {
       }
 
       const userId = authData.user.id;
+      const currentToken = await getExpoPushToken();
 
-      // 2. Fetch profile from guestusers table
+      // Fetch user profile
       const { data: profileData, error: profileError } = await supabase
-        .from("user")
+        .from("users")
         .select("*")
         .eq("email", email.trim())
         .maybeSingle();
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      if (profileData && currentToken) {
+        // Save token in notifications table (ignore duplicates)
+        await supabase
+          .from("notifications")
+          .upsert({ token: currentToken }, { onConflict: "token" });
+
+        // Link token to the user
+        const { error: updateError } = await supabase
+          .from("users")
+          .update({
+            notification_token: currentToken,
+          })
+          .eq("id", profileData.id);
+
+        if (updateError) {
+          throw updateError;
+        }
+      }
 
       if (profileError) {
         console.warn("Profile fetch error:", profileError);
       }
 
       // 3. Fetch verification and role details
-      let role: 'Resident' | 'Guard' | 'Admin' | undefined = undefined;
+      let role: "Resident" | "Guard" | "Admin" | undefined = undefined;
       let isVerified = false;
       let societyId = "";
       let societyName = "";
@@ -72,14 +98,16 @@ export default function LoginScreen() {
 
       const { data: verifyData, error: verifyError } = await supabase
         .from("userverifications")
-        .select(`
+        .select(
+          `
           role,
           is_verified,
           society_id,
           societies ( name ),
           towers ( name ),
           flats ( flat_number )
-        `)
+        `,
+        )
         .eq("user_id", userId)
         .maybeSingle();
 
@@ -105,7 +133,10 @@ export default function LoginScreen() {
       // 4. Save profile in Zustand
       await setProfile({
         id: userId,
-        fullName: profileData?.full_name || authData.user.user_metadata?.full_name || "User",
+        fullName:
+          profileData?.full_name ||
+          authData.user.user_metadata?.full_name ||
+          "User",
         email: email.trim(),
         phone: profileData?.phone || "N/A",
         vehicleNumber: profileData?.vehicle_number || undefined,
@@ -116,18 +147,25 @@ export default function LoginScreen() {
         towerName,
         flatName,
       });
-      console.log({ role })
+      console.log({ role });
       // 5. Navigate based on role & verification
       if (role === "Admin") {
-        Alert.alert("Welcome Admin", "Logging into society administration dashboard.", [
-          { text: "OK", onPress: () => router.replace("/admin" as any) },
-        ]);
+        Alert.alert(
+          "Welcome Admin",
+          "Logging into society administration dashboard.",
+          [{ text: "OK", onPress: () => router.replace("/admin" as any) }],
+        );
       } else if (role === "Resident") {
         if (!isVerified) {
           Alert.alert(
             "Verification Pending",
             `Your profile is awaiting approval from ${societyName || "your society"} Admin.`,
-            [{ text: "Continue", onPress: () => router.replace("/resident" as any) }]
+            [
+              {
+                text: "Continue",
+                onPress: () => router.replace("/resident" as any),
+              },
+            ],
           );
         } else {
           router.replace("/resident" as any);
@@ -137,7 +175,12 @@ export default function LoginScreen() {
           Alert.alert(
             "Verification Pending",
             `Your profile is awaiting approval from ${societyName || "your society"} Admin.`,
-            [{ text: "Continue", onPress: () => router.replace("/guard" as any) }]
+            [
+              {
+                text: "Continue",
+                onPress: () => router.replace("/guard" as any),
+              },
+            ],
           );
         } else {
           router.replace("/guard" as any);
@@ -173,7 +216,7 @@ export default function LoginScreen() {
               },
             },
             { text: "Cancel", style: "cancel" },
-          ]
+          ],
         );
       } else {
         Alert.alert("Login Error", message);
@@ -184,19 +227,31 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView edges={["top", "bottom", "left", 'right']} style={{ flex: 1 }}>
+    <SafeAreaView
+      edges={["top", "bottom", "left", "right"]}
+      style={{ flex: 1 }}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-      <StatusBar style="dark" />
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+        >
+          <StatusBar style="dark" />
 
           {/* Header Anchor */}
           <View style={styles.header}>
-            <MaterialIcons name="security" size={48} color={theme.colors.secondary} />
+            <MaterialIcons
+              name="security"
+              size={48}
+              color={theme.colors.secondary}
+            />
             <Text style={styles.headerTitle}>HomeCircle</Text>
-            <Text style={styles.headerSubtitle}>Securely manage your community experience.</Text>
+            <Text style={styles.headerSubtitle}>
+              Securely manage your community experience.
+            </Text>
           </View>
 
           {/* Form Container */}
@@ -205,7 +260,12 @@ export default function LoginScreen() {
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>EMAIL ADDRESS</Text>
               <View style={styles.inputBox}>
-                <MaterialIcons name="mail" size={20} color={theme.colors.outline} style={styles.inputIcon} />
+                <MaterialIcons
+                  name="mail"
+                  size={20}
+                  color={theme.colors.outline}
+                  style={styles.inputIcon}
+                />
                 <TextInput
                   style={styles.textInput}
                   placeholder="name@example.com"
@@ -222,12 +282,24 @@ export default function LoginScreen() {
             <View style={styles.inputWrapper}>
               <View style={styles.passwordHeader}>
                 <Text style={styles.inputLabel}>PASSWORD</Text>
-                <TouchableOpacity onPress={() => Alert.alert("Forgot Password", "Password reset link will be sent to your email.")}>
+                <TouchableOpacity
+                  onPress={() =>
+                    Alert.alert(
+                      "Forgot Password",
+                      "Password reset link will be sent to your email.",
+                    )
+                  }
+                >
                   <Text style={styles.forgotText}>Forgot Password?</Text>
                 </TouchableOpacity>
               </View>
               <View style={styles.inputBox}>
-                <MaterialIcons name="lock" size={20} color={theme.colors.outline} style={styles.inputIcon} />
+                <MaterialIcons
+                  name="lock"
+                  size={20}
+                  color={theme.colors.outline}
+                  style={styles.inputIcon}
+                />
                 <TextInput
                   style={styles.textInput}
                   placeholder="••••••••"
@@ -237,7 +309,10 @@ export default function LoginScreen() {
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
                 />
-                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.visibilityButton}>
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.visibilityButton}
+                >
                   <MaterialIcons
                     name={showPassword ? "visibility-off" : "visibility"}
                     size={20}
@@ -259,7 +334,11 @@ export default function LoginScreen() {
               ) : (
                 <>
                   <Text style={styles.loginButtonText}>Login to Account</Text>
-                  <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
+                  <MaterialIcons
+                    name="arrow-forward"
+                    size={18}
+                    color="#ffffff"
+                  />
                 </>
               )}
             </TouchableOpacity>
@@ -274,12 +353,30 @@ export default function LoginScreen() {
 
           {/* Social Login Buttons */}
           <View style={styles.socialRow}>
-            <TouchableOpacity style={styles.socialButton} onPress={() => Alert.alert("Google Login", "Logging in with Google.")}>
-              <MaterialIcons name="g-mobiledata" size={28} color={theme.colors.primary} />
+            <TouchableOpacity
+              style={styles.socialButton}
+              onPress={() =>
+                Alert.alert("Google Login", "Logging in with Google.")
+              }
+            >
+              <MaterialIcons
+                name="g-mobiledata"
+                size={28}
+                color={theme.colors.primary}
+              />
               <Text style={styles.socialButtonText}>Google</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.socialButton} onPress={() => Alert.alert("Apple Login", "Logging in with Apple.")}>
-              <MaterialIcons name="phone-iphone" size={20} color={theme.colors.primary} />
+            <TouchableOpacity
+              style={styles.socialButton}
+              onPress={() =>
+                Alert.alert("Apple Login", "Logging in with Apple.")
+              }
+            >
+              <MaterialIcons
+                name="phone-iphone"
+                size={20}
+                color={theme.colors.primary}
+              />
               <Text style={styles.socialButtonText}>Apple</Text>
             </TouchableOpacity>
           </View>
@@ -288,7 +385,10 @@ export default function LoginScreen() {
           <View style={styles.footer}>
             <Text style={styles.footerText}>
               Don't have an account?{" "}
-              <Text style={styles.signUpText} onPress={() => router.push("/create-account" as any)}>
+              <Text
+                style={styles.signUpText}
+                onPress={() => router.push("/create-account" as any)}
+              >
                 Sign Up
               </Text>
             </Text>
@@ -296,11 +396,16 @@ export default function LoginScreen() {
 
           {/* Bottom Encrypted Badge */}
           <View style={styles.encryptedBadge}>
-            <MaterialIcons name="verified-user" size={14} color={theme.colors.outline} />
+            <MaterialIcons
+              name="verified-user"
+              size={14}
+              color={theme.colors.outline}
+            />
             <Text style={styles.encryptedText}>END-TO-END ENCRYPTED</Text>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView></SafeAreaView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
