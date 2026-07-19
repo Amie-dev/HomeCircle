@@ -67,7 +67,7 @@ export default function WelcomeScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
       {/* Background Decorative Blobs */}
       <View style={styles.blob1} pointerEvents="none" />

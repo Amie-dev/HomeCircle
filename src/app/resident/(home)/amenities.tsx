@@ -105,7 +105,7 @@ export default function AmenityBookingScreen() {
 
   return (
     <View style={styles.outerContainer}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
       {/* Top App Bar Header */}
       <View style={styles.topAppBar}>

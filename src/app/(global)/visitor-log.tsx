@@ -1,23 +1,25 @@
-import React, { useState } from "react";
+import { MaterialIcons } from "@expo/vector-icons";
+import { Redirect, useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
+  Platform,
+  ScrollView,
   StyleSheet,
   Text,
-  View,
-  ScrollView,
   TextInput,
   TouchableOpacity,
-  Image,
-  Alert,
-  Platform,
-  Modal,
-  ActivityIndicator,
+  View,
 } from "react-native";
-import { useRouter, Redirect } from "expo-router";
-import { StatusBar } from "expo-status-bar";
-import { MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { theme } from "../../theme";
+import { supabase } from "../../../utils/supabase";
 import { useProfileStore } from "../../store/useProfileStore";
+import { theme } from "../../theme";
+
 
 interface LogEntry {
   id: string;
@@ -27,10 +29,10 @@ interface LogEntry {
   time: string;
   entryTime?: string;
   status: "Entered" | "Exited";
-  date: "Today" | "Yesterday";
+  date: "Today" | "Yesterday" | string;
   avatar?: string;
   icon?: keyof typeof MaterialIcons.glyphMap;
-  
+
   // Details for popup
   residentName?: string;
   residentFlat?: string;
@@ -50,113 +52,122 @@ export default function VisitorLogScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
-  
+
   // New visitor form state
   const [newVisitorName, setNewVisitorName] = useState("");
   const [newVisitorUnit, setNewVisitorUnit] = useState("");
   const [newVisitorType, setNewVisitorType] = useState<"Guest" | "Delivery" | "Cab" | "Daily Help">("Guest");
 
-  // Mock Logs state to allow dynamic entry additions
-  const [logs, setLogs] = useState<LogEntry[]>([
-    {
-      id: "log-1",
-      name: "Amit Sharma",
-      type: "Guest",
-      unit: "Unit 402-B",
-      time: "10:45 AM",
-      status: "Entered",
-      date: "Today",
-      avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuOdDE5j2C-0ASjDtZNWk0ew-XXnz5MHm827U6HzT44T-bkzs9daP-O5g6qNEJw-MFqiQOE-oXfJ3k9zSmgv05o4h8a4iOcjDQjIF9YvDCQS8X9oKB4jc5IMjct3IdzBa4cQ2z4bfxVPIULqdhqxFE7zBCe64hgsV8MRpGxD9LMnUQGTuHjQtqCa_Rti2v-brPHTMH0XlSjI1-pGCu5WnWS-ZBTlQWYuXa5h2-fglctvHkVjb7NFXUOoQ",
-      residentName: "Sarah Miller",
-      residentFlat: "Unit 402-B, Block C",
-      approvedByResident: "Sarah Miller (Approved via App)",
-      guardName: "Officer Dev Singh",
-      guardGate: "Main Security Gate",
-      vehicleNumber: "N/A",
-    },
-    {
-      id: "log-2",
-      name: "Zomato Delivery",
-      type: "Delivery",
-      unit: "Unit 105-A",
-      time: "11:35 AM",
-      entryTime: "11:20 AM",
-      status: "Exited",
-      date: "Today",
-      icon: "delivery-dining",
-      residentName: "John Doe",
-      residentFlat: "Unit 105-A, Block A",
-      approvedByResident: "John Doe (Auto-Approved for Delivery)",
-      guardName: "Officer Dev Singh",
-      guardGate: "Main Security Gate",
-      vehicleNumber: "KA-51-EF-4321",
-    },
-    {
-      id: "log-3",
-      name: "Rajesh Kumar",
-      type: "Daily Help",
-      unit: "Unit 604-D",
-      time: "08:15 AM",
-      status: "Entered",
-      date: "Today",
-      avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuBGPT-qG5A5NJuVBqlnlvGu64L0r1Ip8269KzywtLrQ8aX4lUvjsuxVB-9Jjgkp6Wc78sy6V3n4I_1nG2jHUE4KqjRe_f1bVxg8YW3GDns3M6DsSis9KrukBXPEVsTuDQiD32YjXgnUT0PwXcUgummA4InTxXAxW7k0f9glGrzIfxcXWqWc9zkbl1pAWhWTzJ2NQ74Cxy9tKB6p87zi-HygNk3343Hlc1l4dWT8FuSngpB1ta8n4q0bPA",
-      residentName: "Amit Patel",
-      residentFlat: "Unit 604-D, Block F",
-      approvedByResident: "Amit Patel (Pre-approved Daily Help)",
-      guardName: "Officer Ram Charan",
-      guardGate: "Service Gate 2",
-      vehicleNumber: "N/A",
-    },
-    {
-      id: "log-4",
-      name: "Uber (KA-01-AB-1234)",
-      type: "Cab",
-      unit: "Unit 201-C",
-      time: "07:50 AM",
-      status: "Exited",
-      date: "Yesterday",
-      icon: "directions-car",
-      residentName: "Priya Rao",
-      residentFlat: "Unit 201-C, Block B",
-      approvedByResident: "Priya Rao (Approved via App)",
-      guardName: "Officer Dev Singh",
-      guardGate: "Main Security Gate",
-      vehicleNumber: "KA-01-AB-1234",
-    },
-    {
-      id: "log-5",
-      name: "Ananya Sen",
-      type: "Guest",
-      unit: "Unit 302-F",
-      time: "04:15 PM",
-      status: "Entered",
-      date: "Yesterday",
-      avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuDxEpqrCszbXqFNXGK4BENBWGxAGz_oErQXNnl1NeFr9DjIQf-CInJptwJSpWL8OWGGO-aPv3BDSUCL-Kp8GaVuSL3UW-v-6CgIquryYECMqH7B3WimZJq099rNb9CRFNw_-8GNZU_idcFgggFB4U2CLgYtVfW_hnxfGNqsNVbCzMk0l31rzgj0sitICiajTHYAQno0Cm6n-TqHQSZAXvW30zBHzs6xHAqvXPEcLfQCQ2Xx-CIjwSPzJQ",
-      residentName: "Sarah Miller",
-      residentFlat: "Unit 302-F, Block B",
-      approvedByResident: "Sarah Miller (Approved via App)",
-      guardName: "Officer Ram Charan",
-      guardGate: "Main Security Gate",
-      vehicleNumber: "N/A",
-    },
-    {
-      id: "log-6",
-      name: "DHL Courier",
-      type: "Delivery",
-      unit: "Unit 501-A",
-      time: "02:30 PM",
-      entryTime: "02:10 PM",
-      status: "Exited",
-      date: "Yesterday",
-      icon: "local-shipping",
-      residentName: "Vikas Kumar",
-      residentFlat: "Unit 501-A, Block D",
-      approvedByResident: "Vikas Kumar (Approved via Code)",
-      guardName: "Officer Dev Singh",
-      guardGate: "Main Security Gate",
-      vehicleNumber: "MH-02-XY-9876",
-    },
-  ]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchLogs = async () => {
+    if (!profile?.id) return;
+    try {
+      setLoading(true);
+      let query = supabase
+        .from("visitor_logs")
+        .select(`
+          id,
+          action_type,
+          created_at,
+          gate_name,
+          logged_by,
+          logged_by_user:users!visitor_logs_logged_by_fkey (
+            full_name
+          ),
+          requestpasses!inner (
+            id,
+            visitor_name,
+            designation,
+            visitor_phone,
+            visitor_email,
+            tower_no,
+            flat_no,
+            resident_details
+          )
+        `);
+
+      if (profile.role === "Admin") {
+        if (profile.societyId) {
+          query = query.eq("requestpasses.resident_details->>societyId", profile.societyId);
+        }
+      } else if (profile.role === "Guard") {
+        query = query.eq("logged_by", profile.id);
+      } else {
+        setLogs([]);
+        return;
+      }
+
+      const { data, error } = await query.order("created_at", { ascending: false });
+      if (error) throw error;
+
+      if (data) {
+        const mappedLogs: LogEntry[] = data.map((l: any) => {
+          const pass = l.requestpasses;
+          const resident = pass?.resident_details;
+          const createdAtDate = new Date(l.created_at);
+          const isToday = createdAtDate.toDateString() === new Date().toDateString();
+
+          let isYesterday = false;
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          if (createdAtDate.toDateString() === yesterday.toDateString()) {
+            isYesterday = true;
+          }
+
+          const formattedTime = createdAtDate.toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          });
+
+          let mappedType: "Guest" | "Delivery" | "Cab" | "Daily Help" = "Guest";
+          const des = (pass?.designation || "").toLowerCase();
+          if (des.includes("delivery")) {
+            mappedType = "Delivery";
+          } else if (des.includes("cab") || des.includes("taxi")) {
+            mappedType = "Cab";
+          } else if (des.includes("help") || des.includes("clean") || des.includes("maid") || des.includes("cook")) {
+            mappedType = "Daily Help";
+          }
+
+          return {
+            id: l.id,
+            name: pass?.visitor_name || "Unknown Visitor",
+            type: mappedType,
+            unit: `Tower ${pass?.tower_no || ""}, Flat ${pass?.flat_no || ""}`,
+            time: formattedTime,
+            status: l.action_type === "Check-in" ? "Entered" : "Exited",
+            date: isToday ? "Today" : isYesterday ? "Yesterday" : createdAtDate.toLocaleDateString(),
+            icon: mappedType === "Delivery"
+              ? "delivery-dining"
+              : mappedType === "Cab"
+                ? "directions-car"
+                : mappedType === "Daily Help"
+                  ? "cleaning-services"
+                  : "person",
+            residentName: resident?.fullName || "Resident",
+            residentFlat: `Tower ${pass?.tower_no || ""}, Flat ${pass?.flat_no || ""}`,
+            approvedByResident: resident?.fullName ? `${resident.fullName} (Approved)` : "Resident Approved",
+            guardName: l.logged_by_user?.full_name || "Security Guard",
+            guardGate: l.gate_name || "Main Gate",
+            vehicleNumber: resident?.vehicleNumber || resident?.vehicleNo || "N/A",
+          };
+        });
+
+        setLogs(mappedLogs);
+      }
+    } catch (err: any) {
+      console.error("Error fetching logs in visitor-log.tsx:", err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLogs();
+  }, [profile?.id]);
 
   if (isLoadingProfile) {
     return (
@@ -224,10 +235,10 @@ export default function VisitorLogScreen() {
       icon: newVisitorType === "Delivery"
         ? "delivery-dining"
         : newVisitorType === "Cab"
-        ? "directions-car"
-        : newVisitorType === "Daily Help"
-        ? "cleaning-services"
-        : undefined,
+          ? "directions-car"
+          : newVisitorType === "Daily Help"
+            ? "cleaning-services"
+            : undefined,
       residentName: `Resident of Flat ${newVisitorUnit}`,
       residentFlat: newVisitorUnit.startsWith("Unit") ? newVisitorUnit : `Unit ${newVisitorUnit}`,
       approvedByResident: `Resident of Flat ${newVisitorUnit} (Pre-Approved)`,
@@ -292,12 +303,25 @@ export default function VisitorLogScreen() {
           </TouchableOpacity>
           <Text style={styles.appBarTitle}>Visitor Log</Text>
         </View>
-        <TouchableOpacity
-          style={styles.iconBtn}
-          onPress={() => Alert.alert("Filter", "Search name or use category chips to filter logs.")}
-        >
-          <MaterialIcons name="filter-list" size={24} color={theme.colors.onSurfaceVariant} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={fetchLogs}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+            ) : (
+              <MaterialIcons name="refresh" size={24} color={theme.colors.primary} />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => Alert.alert("Filter", "Search name or use category chips to filter logs.")}
+          >
+            <MaterialIcons name="filter-list" size={24} color={theme.colors.onSurfaceVariant} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -444,10 +468,12 @@ export default function VisitorLogScreen() {
         </View>
       </ScrollView>
 
-      {/* Floating Action Button (FAB) */}
+      {/* Floating Action Button (FAB) hidden as entries are created via scan check-in */}
+      {/*
       <TouchableOpacity style={styles.fab} onPress={() => setShowAddModal(true)}>
         <MaterialIcons name="add" size={28} color="#ffffff" />
       </TouchableOpacity>
+      */}
 
       {/* Add Entry Modal */}
       <Modal

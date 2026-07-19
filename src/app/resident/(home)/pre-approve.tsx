@@ -121,7 +121,7 @@ export default function PreApproveGuestScreen() {
       style={{ flex: 1 }}
     >
       <View style={styles.outerContainer}>
-        <StatusBar style="light" />
+      <StatusBar style="dark" />
 
         {/* Top App Bar Header */}
         <View style={[styles.topAppBar, { paddingTop: insets.top }]}>

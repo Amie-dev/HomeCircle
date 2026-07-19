@@ -1,20 +1,20 @@
-import React, { useState, useEffect } from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-} from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { theme } from "../../../theme";
+import React, { useEffect, useState } from "react";
+import {
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../../../utils/supabase";
 import { useProfileStore } from "../../../store/useProfileStore";
+import { theme } from "../../../theme";
+import { StatusBar } from "expo-status-bar";
 
 interface Complaint {
   id: string;
@@ -45,7 +45,7 @@ export default function OpenComplaints() {
         .from("tickets")
         .select(`
           *,
-          guestusers (
+          users (
             full_name,
             email,
             phone,
@@ -63,11 +63,11 @@ export default function OpenComplaints() {
       if (data) {
         setComplaints(
           data.map((t: any) => {
-            const member = t.guestusers?.societymembers?.[0];
+            const member = t.users?.societymembers?.[0];
             const towerName = member?.towers?.name || "";
             const flatNo = member?.flats?.flat_number || "";
             const unitText = towerName && flatNo ? `Tower ${towerName} - ${flatNo}` : "External/Staff";
-            
+
             // Format time ago or date
             const createdDate = new Date(t.created_at);
             const diffMs = Date.now() - createdDate.getTime();
@@ -83,7 +83,7 @@ export default function OpenComplaints() {
               timeAgo,
               severity: t.is_urgent ? "High" : "Low",
               status: t.status,
-              residentName: t.guestusers?.full_name || "Unknown Resident",
+              residentName: t.users?.full_name || "Unknown Resident",
               residentUnit: unitText,
             };
           })
@@ -262,6 +262,8 @@ export default function OpenComplaints() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* TopAppBar */}
+            <StatusBar style="dark" />
+      
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -343,8 +345,8 @@ export default function OpenComplaints() {
                             complaint.category === "Plumbing"
                               ? theme.colors.error
                               : complaint.category === "Electrical"
-                              ? theme.colors.secondary
-                              : theme.colors.primary
+                                ? theme.colors.secondary
+                                : theme.colors.primary
                           }
                         />
                       </View>

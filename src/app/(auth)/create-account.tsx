@@ -14,11 +14,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { getPushToken } from "../../../utils/pushToken";
 import { supabase } from "../../../utils/supabase";
 import { useProfileStore } from "../../store/useProfileStore";
 import { theme } from "../../theme";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { getPushToken } from "../../../utils/pushToken";
 
 export default function CreateAccountScreen() {
   const router = useRouter();
@@ -65,22 +65,23 @@ export default function CreateAccountScreen() {
           .insert({ token });
 
         if (notificationError && notificationError.code !== "23505") {
-          console.error("Error saving token to notifications table:", notificationError.message);
+          console.error(
+            "Error saving token to notifications table:",
+            notificationError.message,
+          );
         }
       }
 
       // 1b. Insert credentials into custom database users table
-      const { error: dbError } = await supabase
-        .from("users")
-        .insert({
-          id: userId,
-          role: role,
-          full_name: fullName,
-          phone: phone,
-          email: email.trim(),
-          password: password,
-          notification_token: token
-        });
+      const { error: dbError } = await supabase.from("users").insert({
+        id: userId,
+        role: role,
+        full_name: fullName,
+        phone: phone,
+        email: email.trim(),
+        password: password,
+        notification_token: token,
+      });
 
       if (dbError) {
         throw new Error(dbError.message);
@@ -107,7 +108,11 @@ export default function CreateAccountScreen() {
     } catch (err: any) {
       const message = err.message || "Failed to sign up";
       // Fallback for missing backend or networking issues
-      if (message.includes("network") || message.includes("credentials") || message.includes("relation")) {
+      if (
+        message.includes("network") ||
+        message.includes("credentials") ||
+        message.includes("relation")
+      ) {
         Alert.alert(
           "DB Warning",
           "Supabase Auth registration failed. Proceeding with offline mockup state for testing.",
@@ -133,7 +138,7 @@ export default function CreateAccountScreen() {
               },
             },
             { text: "Cancel", style: "cancel" },
-          ]
+          ],
         );
       } else {
         Alert.alert("Signup Error", message);
@@ -152,16 +157,14 @@ export default function CreateAccountScreen() {
       const mockPhone = "9999999999";
 
       // Insert into users table with default Resident role
-      const { error: dbError } = await supabase
-        .from("users")
-        .insert({
-          id: userId,
-          role: "Resident",
-          full_name: mockName,
-          phone: mockPhone,
-          email: mockEmail,
-          password: "", // no password for social logins
-        });
+      const { error: dbError } = await supabase.from("users").insert({
+        id: userId,
+        role: "Resident",
+        full_name: mockName,
+        phone: mockPhone,
+        email: mockEmail,
+        password: "", // no password for social logins
+      });
 
       if (dbError) {
         throw new Error(dbError.message);
@@ -184,7 +187,7 @@ export default function CreateAccountScreen() {
             text: "Continue",
             onPress: () => router.push("/resident-details" as any),
           },
-        ]
+        ],
       );
     } catch (err: any) {
       console.warn(`${provider} signup failed:`, err.message);
@@ -205,179 +208,262 @@ export default function CreateAccountScreen() {
   };
 
   return (
-    <SafeAreaView edges={["top","bottom","left",'right']} style={{flex:1}}>
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    <SafeAreaView
+      edges={["top", "bottom", "left", "right"]}
       style={{ flex: 1 }}
     >
-      <ScrollView contentContainerStyle={[styles.container]} keyboardShouldPersistTaps="handled">
-        <StatusBar style="light" />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          contentContainerStyle={[styles.container]}
+          keyboardShouldPersistTaps="handled"
+        >
+          <StatusBar style="dark" />
 
-        {/* Top Branding Anchor */}
-        <View style={styles.header}>
-          <View style={styles.logoRow}>
-            <MaterialIcons name="home" size={32} color={theme.colors.secondary} />
-            <Text style={styles.logoText}>HomeCircle</Text>
-          </View>
-          <Text style={styles.headerTitle}>Create Account</Text>
-          <Text style={styles.headerSubtitle}>Join your digital smart society community today.</Text>
-        </View>
-
-        {/* Role Segmented Selector */}
-        <View style={styles.roleWrapper}>
-          <Text style={styles.inputLabel}>I AM A</Text>
-          <View style={styles.segmentedControl}>
-            {/* Active indicator overlay */}
-            <View
-              style={[
-                styles.indicator,
-                {
-                  left: role === "Resident" ? 4 : role === "Guard" ? "34.5%" : "66%",
-                },
-              ]}
-            />
-            <TouchableOpacity
-              style={[styles.segmentBtn, role === "Resident" && styles.segmentBtnActive]}
-              onPress={() => setRole("Resident")}
-            >
-              <Text style={[styles.segmentBtnText, role === "Resident" && styles.segmentBtnTextActive]}>
-                Resident
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.segmentBtn, role === "Guard" && styles.segmentBtnActive]}
-              onPress={() => setRole("Guard")}
-            >
-              <Text style={[styles.segmentBtnText, role === "Guard" && styles.segmentBtnTextActive]}>
-                Guard
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.segmentBtn, role === "Admin" && styles.segmentBtnActive]}
-              onPress={() => setRole("Admin")}
-            >
-              <Text style={[styles.segmentBtnText, role === "Admin" && styles.segmentBtnTextActive]}>
-                Admin
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Form Fields */}
-        <View style={styles.formContainer}>
-          {/* Full Name */}
-          <View style={styles.inputWrapper}>
-            <Text style={styles.inputLabel}>FULL NAME</Text>
-            <View style={styles.inputBox}>
-              <MaterialIcons name="person" size={20} color={theme.colors.outline} style={styles.inputIcon} />
-              <TextInput
-                style={styles.textInput}
-                placeholder="Enter your full name"
-                placeholderTextColor={theme.colors.outline}
-                value={fullName}
-                onChangeText={setFullName}
+          {/* Top Branding Anchor */}
+          <View style={styles.header}>
+            <View style={styles.logoRow}>
+              <MaterialIcons
+                name="home"
+                size={32}
+                color={theme.colors.secondary}
               />
+              <Text style={styles.logoText}>HomeCircle</Text>
             </View>
-          </View>
-
-          {/* Phone */}
-          <View style={styles.inputWrapper}>
-            <Text style={styles.inputLabel}>PHONE NUMBER</Text>
-            <View style={styles.inputBox}>
-              <MaterialIcons name="phone" size={20} color={theme.colors.outline} style={styles.inputIcon} />
-              <TextInput
-                style={styles.textInput}
-                placeholder="+1 (555) 000-0000"
-                placeholderTextColor={theme.colors.outline}
-                keyboardType="phone-pad"
-                value={phone}
-                onChangeText={setPhone}
-              />
-            </View>
-          </View>
-
-          {/* Email */}
-          <View style={styles.inputWrapper}>
-            <Text style={styles.inputLabel}>EMAIL ADDRESS</Text>
-            <View style={styles.inputBox}>
-              <MaterialIcons name="mail" size={20} color={theme.colors.outline} style={styles.inputIcon} />
-              <TextInput
-                style={styles.textInput}
-                placeholder="name@example.com"
-                placeholderTextColor={theme.colors.outline}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                value={email}
-                onChangeText={setEmail}
-              />
-            </View>
-          </View>
-
-          {/* Password */}
-          <View style={styles.inputWrapper}>
-            <Text style={styles.inputLabel}>PASSWORD</Text>
-            <View style={styles.inputBox}>
-              <MaterialIcons name="lock" size={20} color={theme.colors.outline} style={styles.inputIcon} />
-              <TextInput
-                style={styles.textInput}
-                placeholder="Create password"
-                placeholderTextColor={theme.colors.outline}
-                secureTextEntry
-                autoCapitalize="none"
-                value={password}
-                onChangeText={setPassword}
-              />
-            </View>
-          </View>
-
-          {/* Action Button */}
-          <TouchableOpacity
-            onPress={handleContinue}
-            style={styles.continueButton}
-            activeOpacity={0.9}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color="#ffffff" />
-            ) : (
-              <>
-                <Text style={styles.continueButtonText}>Continue</Text>
-                <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {/* Divider */}
-        <View style={styles.dividerRow}>
-          <View style={styles.line} />
-          <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
-          <View style={styles.line} />
-        </View>
-
-        {/* Social Register */}
-        <View style={styles.socialRow}>
-          <TouchableOpacity style={styles.socialButton} onPress={() => handleSocialSignup("Google")}>
-            <MaterialIcons name="g-mobiledata" size={28} color={theme.colors.primary} />
-            <Text style={styles.socialButtonText}>Google</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.socialButton} onPress={() => handleSocialSignup("Apple")}>
-            <MaterialIcons name="phone-iphone" size={20} color={theme.colors.primary} />
-            <Text style={styles.socialButtonText}>Apple</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Return to Sign In */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            Already have an account?{" "}
-            <Text style={styles.signInLink} onPress={() => router.push("/login" as any)}>
-              Sign In
+            <Text style={styles.headerTitle}>Create Account</Text>
+            <Text style={styles.headerSubtitle}>
+              Join your digital smart society community today.
             </Text>
-          </Text>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView></SafeAreaView>
+          </View>
+
+          {/* Role Segmented Selector */}
+          <View style={styles.roleWrapper}>
+            <Text style={styles.inputLabel}>I AM A</Text>
+            <View style={styles.segmentedControl}>
+              {/* Active indicator overlay */}
+              <View
+                style={[
+                  styles.indicator,
+                  {
+                    left:
+                      role === "Resident"
+                        ? 4
+                        : role === "Guard"
+                          ? "34.5%"
+                          : "66%",
+                  },
+                ]}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.segmentBtn,
+                  role === "Resident" && styles.segmentBtnActive,
+                ]}
+                onPress={() => setRole("Resident")}
+              >
+                <Text
+                  style={[
+                    styles.segmentBtnText,
+                    role === "Resident" && styles.segmentBtnTextActive,
+                  ]}
+                >
+                  Resident
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.segmentBtn,
+                  role === "Guard" && styles.segmentBtnActive,
+                ]}
+                onPress={() => setRole("Guard")}
+              >
+                <Text
+                  style={[
+                    styles.segmentBtnText,
+                    role === "Guard" && styles.segmentBtnTextActive,
+                  ]}
+                >
+                  Guard
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.segmentBtn,
+                  role === "Admin" && styles.segmentBtnActive,
+                ]}
+                onPress={() => setRole("Admin")}
+              >
+                <Text
+                  style={[
+                    styles.segmentBtnText,
+                    role === "Admin" && styles.segmentBtnTextActive,
+                  ]}
+                >
+                  Admin
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Form Fields */}
+          <View style={styles.formContainer}>
+            {/* Full Name */}
+            <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>FULL NAME</Text>
+              <View style={styles.inputBox}>
+                <MaterialIcons
+                  name="person"
+                  size={20}
+                  color={theme.colors.outline}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Enter your full name"
+                  placeholderTextColor={theme.colors.outline}
+                  value={fullName}
+                  onChangeText={setFullName}
+                />
+              </View>
+            </View>
+
+            {/* Phone */}
+            <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>PHONE NUMBER</Text>
+              <View style={styles.inputBox}>
+                <MaterialIcons
+                  name="phone"
+                  size={20}
+                  color={theme.colors.outline}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="+1 (555) 000-0000"
+                  placeholderTextColor={theme.colors.outline}
+                  keyboardType="phone-pad"
+                  value={phone}
+                  onChangeText={setPhone}
+                />
+              </View>
+            </View>
+
+            {/* Email */}
+            <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>EMAIL ADDRESS</Text>
+              <View style={styles.inputBox}>
+                <MaterialIcons
+                  name="mail"
+                  size={20}
+                  color={theme.colors.outline}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="name@example.com"
+                  placeholderTextColor={theme.colors.outline}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={email}
+                  onChangeText={setEmail}
+                />
+              </View>
+            </View>
+
+            {/* Password */}
+            <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>PASSWORD</Text>
+              <View style={styles.inputBox}>
+                <MaterialIcons
+                  name="lock"
+                  size={20}
+                  color={theme.colors.outline}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Create password"
+                  placeholderTextColor={theme.colors.outline}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  value={password}
+                  onChangeText={setPassword}
+                />
+              </View>
+            </View>
+
+            {/* Action Button */}
+            <TouchableOpacity
+              onPress={handleContinue}
+              style={styles.continueButton}
+              activeOpacity={0.9}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <>
+                  <Text style={styles.continueButtonText}>Continue</Text>
+                  <MaterialIcons
+                    name="arrow-forward"
+                    size={18}
+                    color="#ffffff"
+                  />
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Divider */}
+          <View style={styles.dividerRow}>
+            <View style={styles.line} />
+            <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
+            <View style={styles.line} />
+          </View>
+
+          {/* Social Register */}
+          <View style={styles.socialRow}>
+            <TouchableOpacity
+              style={styles.socialButton}
+              onPress={() => handleSocialSignup("Google")}
+            >
+              <MaterialIcons
+                name="g-mobiledata"
+                size={28}
+                color={theme.colors.primary}
+              />
+              <Text style={styles.socialButtonText}>Google</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.socialButton}
+              onPress={() => handleSocialSignup("Apple")}
+            >
+              <MaterialIcons
+                name="phone-iphone"
+                size={20}
+                color={theme.colors.primary}
+              />
+              <Text style={styles.socialButtonText}>Apple</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Return to Sign In */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>
+              Already have an account?{" "}
+              <Text
+                style={styles.signInLink}
+                onPress={() => router.push("/login" as any)}
+              >
+                Sign In
+              </Text>
+            </Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 

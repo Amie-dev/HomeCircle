@@ -1,21 +1,22 @@
-import React, { useState, useEffect } from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
-  Image,
-  Alert,
-  ActivityIndicator,
-} from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { theme } from "../../../theme";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../../../utils/supabase";
 import { useProfileStore } from "../../../store/useProfileStore";
+import { theme } from "../../../theme";
+import { StatusBar } from "expo-status-bar";
 
 interface StaffMember {
   id: string;
@@ -45,7 +46,7 @@ export default function ManageStaff() {
         .from("societymembers")
         .select(`
           user_id,
-          guestusers (
+          users (
             full_name,
             email,
             phone
@@ -77,11 +78,11 @@ export default function ManageStaff() {
 
           return {
             id: m.user_id,
-            name: m.guestusers?.full_name || "Unknown Guard",
+            name: m.users?.full_name || "Unknown Guard",
             role: "Security Guard",
             category: "Security",
             status,
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(m.guestusers?.full_name || "Guard")}&background=random`,
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(m.users?.full_name || "Guard")}&background=random`,
           };
         });
 
@@ -149,12 +150,13 @@ export default function ManageStaff() {
             try {
               // Create a random user UUID
               const guardId = "550e8400-e29b-41d4-a716-" + Math.floor(100000000000 + Math.random() * 900000000000).toString();
-              
-              // 1. Insert into guestusers
+
+              // 1. Insert into users
               const { error: userErr } = await supabase
-                .from("guestusers")
+                .from("users")
                 .insert({
                   id: guardId,
+                  role: "Guard",
                   full_name: "Guard Vikram Singh",
                   email: `vikram.guard.${Math.floor(Math.random() * 1000)}@homecircle.com`,
                   phone: "9876543210",
@@ -224,6 +226,8 @@ export default function ManageStaff() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* TopAppBar */}
+            <StatusBar style="dark" />
+      
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -251,7 +255,7 @@ export default function ManageStaff() {
             <Text style={[styles.overviewValue, { color: theme.colors.secondary }]}>{counts.onDuty}</Text>
           </View>
           <View style={styles.overviewCard}>
-            <Text style={styles.overviewLabel}>Absent</Text>
+            <Text style={styles.overviewLabel}>Off Duty</Text>
             <Text style={[styles.overviewValue, { color: theme.colors.error }]}>{counts.offDuty}</Text>
           </View>
         </View>

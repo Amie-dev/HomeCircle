@@ -1,25 +1,26 @@
-import React, { useState } from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-  ScrollView,
-  TouchableOpacity,
-  Image,
-  Alert,
-  Dimensions,
-} from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { theme } from "../../../theme";
-import { useProfileStore } from "../../../store/useProfileStore";
+import React, { useState } from "react";
+import {
+  Alert,
+  Dimensions,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useProfileStore } from "../../../store/useProfileStore";
+import { theme } from "../../../theme";
 
 const { width } = Dimensions.get("window");
 
+import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { supabase } from "../../../../utils/supabase";
 import { ActivityIndicator } from "react-native";
+import { supabase } from "../../../../utils/supabase";
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -79,8 +80,8 @@ export default function AdminDashboard() {
         .in("status", ["Pending", "Overdue"]);
 
       const totalDues = duesData?.reduce((acc: number, item: any) => acc + Number(item.amount), 0) || 0;
-      const formattedDues = totalDues >= 1000 
-        ? `₹${(totalDues / 1000).toFixed(1)}k` 
+      const formattedDues = totalDues >= 1000
+        ? `₹${(totalDues / 1000).toFixed(1)}k`
         : `₹${totalDues}`;
 
       setStats({
@@ -192,6 +193,7 @@ export default function AdminDashboard() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* TopAppBar */}
+      <StatusBar style="dark" />
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.iconContainer}>

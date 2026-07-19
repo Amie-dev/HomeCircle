@@ -1,26 +1,27 @@
-import React, { useState, useEffect } from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-} from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { theme } from "../../../theme";
+import React, { useEffect, useState } from "react";
+import {
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { theme } from "../../../theme";
 
+import { ActivityIndicator } from "react-native";
 import { supabase } from "../../../../utils/supabase";
 import { useProfileStore } from "../../../store/useProfileStore";
-import { ActivityIndicator } from "react-native";
+import { StatusBar } from "expo-status-bar";
 
 export default function MaintenanceDues() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { profile } = useProfileStore();
-  
+
   const [activeSegment, setActiveSegment] = useState<"Pending" | "Paid">("Pending");
   const [invoices, setInvoices] = useState<any[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
@@ -139,6 +140,8 @@ export default function MaintenanceDues() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* TopAppBar */}
+            <StatusBar style="dark" />
+      
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>

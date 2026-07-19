@@ -1,19 +1,20 @@
-import React, { useState, useEffect } from "react";
+import { MaterialIcons } from "@expo/vector-icons";
+import { StatusBar } from "expo-status-bar";
+import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
   StyleSheet,
   Text,
-  View,
-  ScrollView,
   TouchableOpacity,
-  Image,
-  Alert,
-  ActivityIndicator,
+  View,
 } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
-import { theme } from "../../../theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../../../utils/supabase";
 import { useProfileStore } from "../../../store/useProfileStore";
+import { theme } from "../../../theme";
 
 export default function AdminReports() {
   const insets = useSafeAreaInsets();
@@ -107,6 +108,7 @@ export default function AdminReports() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      <StatusBar style="dark" />
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.headerTitle}>Reports</Text>

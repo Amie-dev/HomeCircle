@@ -3,7 +3,17 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Image, ImageBackground, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  ImageBackground,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { sendPushNotification } from "../../../../utils/notificationService";
 import { supabase } from "../../../../utils/supabase";
 import { usePassesHistory } from "../../../hooks/useRequestPasses";
@@ -14,15 +24,17 @@ export default function VisitorsScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { profile } = useProfileStore();
-  const [activeTab, setActiveTab] = useState<"approvals" | "history">("approvals");
+  const [activeTab, setActiveTab] = useState<"approvals" | "history">(
+    "approvals",
+  );
 
-  console.log("DEBUG [visitors.tsx] Render state:", { 
-    profileId: profile?.id, 
+  console.log("DEBUG [visitors.tsx] Render state:", {
+    profileId: profile?.id,
     role: profile?.role,
-    societyId: profile?.societyId, 
+    societyId: profile?.societyId,
     towerId: profile?.towerId,
     towerName: profile?.towerName,
-    flatName: profile?.flatName 
+    flatName: profile?.flatName,
   });
 
   // Fetch visitor history/live data
@@ -32,10 +44,15 @@ export default function VisitorsScreen() {
     profile?.societyId,
     profile?.towerId,
     profile?.towerName,
-    profile?.flatName
+    profile?.flatName,
   );
 
-  console.log("DEBUG [visitors.tsx] Passes history list count:", historyList.length, "isLoading:", isLoading);
+  console.log(
+    "DEBUG [visitors.tsx] Passes history list count:",
+    historyList.length,
+    "isLoading:",
+    isLoading,
+  );
 
   // Subscribe to realtime updates for requestpasses table
   useEffect(() => {
@@ -53,7 +70,7 @@ export default function VisitorsScreen() {
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["passesHistory"] });
-        }
+        },
       )
       .subscribe();
 
@@ -64,7 +81,15 @@ export default function VisitorsScreen() {
 
   // Mutation to approve/reject passes
   const updatePassStatusMutation = useMutation({
-    mutationFn: async ({ passId, status, visitorEmail }: { passId: string; status: "Approved" | "Rejected"; visitorEmail: string }) => {
+    mutationFn: async ({
+      passId,
+      status,
+      visitorEmail,
+    }: {
+      passId: string;
+      status: "Approved" | "Rejected";
+      visitorEmail: string;
+    }) => {
       const { error } = await supabase
         .from("requestpasses")
         .update({ status })
@@ -72,10 +97,12 @@ export default function VisitorsScreen() {
 
       if (error) throw error;
 
-      const title = status === "Approved" ? "Pass Approved 🎟️" : "Pass Rejected ❌";
-      const body = status === "Approved"
-        ? "Your request to visit has been approved by the resident."
-        : "Your request to visit was rejected by the resident.";
+      const title =
+        status === "Approved" ? "Pass Approved 🎟️" : "Pass Rejected ❌";
+      const body =
+        status === "Approved"
+          ? "Your request to visit has been approved by the resident."
+          : "Your request to visit was rejected by the resident.";
       const screen = "/request-pass";
 
       // Fetch the guest's push token from guestusers table using email
@@ -85,7 +112,7 @@ export default function VisitorsScreen() {
           .select("id, notification_token")
           .eq("email", visitorEmail)
           .maybeSingle();
-
+        console.log("visitortsx line 115", { guestData });
         if (guestData) {
           if (guestData.notification_token) {
             await sendPushNotification({
@@ -100,39 +127,56 @@ export default function VisitorsScreen() {
           }
 
           // Notify the guest in push_notifications table
-          await supabase
-            .from("push_notifications")
-            .insert({
-              user_id: guestData.id,
-              title,
-              body,
-              screen,
-              status: "Sent",
-            });
+          await supabase.from("push_notifications").insert({
+            user_id: guestData.id,
+            title,
+            body,
+            screen,
+            status: "Sent",
+          });
         }
       } catch (pushErr) {
         console.warn("Failed to send push notification to guest:", pushErr);
       }
     },
     onSuccess: (_, variables) => {
-      Alert.alert("Success", `Visitor pass has been ${variables.status.toLowerCase()}.`);
+      Alert.alert(
+        "Success",
+        `Visitor pass has been ${variables.status.toLowerCase()}.`,
+      );
       queryClient.invalidateQueries({ queryKey: ["passesHistory"] });
     },
     onError: (err: any) => {
-      Alert.alert("Error", err.message || "Failed to update visitor pass status.");
-    }
+      Alert.alert(
+        "Error",
+        err.message || "Failed to update visitor pass status.",
+      );
+    },
   });
 
-  const handleAction = (passId: string, status: "Approved" | "Rejected", visitorEmail: string) => {
+  const handleAction = (
+    passId: string,
+    status: "Approved" | "Rejected",
+    visitorEmail: string,
+  ) => {
     updatePassStatusMutation.mutate({ passId, status, visitorEmail });
   };
 
   const getVisitorIcon = (designation: string) => {
     const desc = designation.toLowerCase();
-    if (desc.includes("delivery") || desc.includes("zomato") || desc.includes("swiggy")) {
+    if (
+      desc.includes("delivery") ||
+      desc.includes("zomato") ||
+      desc.includes("swiggy")
+    ) {
       return "delivery-dining";
     }
-    if (desc.includes("service") || desc.includes("plumb") || desc.includes("electr") || desc.includes("clean")) {
+    if (
+      desc.includes("service") ||
+      desc.includes("plumb") ||
+      desc.includes("electr") ||
+      desc.includes("clean")
+    ) {
       return "cleaning-services";
     }
     return "person";
@@ -155,14 +199,18 @@ export default function VisitorsScreen() {
   const formatTime = (isoString: string) => {
     try {
       const date = new Date(isoString);
-      return date.toLocaleDateString("en-IN", {
-        month: "short",
-        day: "numeric",
-      }) + " at " + date.toLocaleTimeString("en-IN", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      });
+      return (
+        date.toLocaleDateString("en-IN", {
+          month: "short",
+          day: "numeric",
+        }) +
+        " at " +
+        date.toLocaleTimeString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        })
+      );
     } catch {
       return "Today";
     }
@@ -171,9 +219,14 @@ export default function VisitorsScreen() {
   if (!profile) return null;
 
   // Filter lists from DB
-  const pendingPasses = historyList.filter(pass => pass.status === "Pending");
-  const upcomingGuests = historyList.filter(pass => pass.status === "Approved" && new Date(pass.expiry_time) > new Date());
-  const verifiedVisitors = historyList.filter(pass => pass.status === "Verified");
+  const pendingPasses = historyList.filter((pass) => pass.status === "Pending");
+  const upcomingGuests = historyList.filter(
+    (pass) =>
+      pass.status === "Approved" && new Date(pass.expiry_time) > new Date(),
+  );
+  const verifiedVisitors = historyList.filter(
+    (pass) => pass.status === "Verified",
+  );
 
   // Visual mock data matching HTML exactly
   const mockPendingPasses = [
@@ -184,8 +237,9 @@ export default function VisitorsScreen() {
       flat_no: profile.flatName || "B-402",
       tower_no: profile.towerName || "Block C",
       gate: "Main Gate",
-      avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuAqSOxGh9UnEt7aRX29od_iWb77r1fVoLYW1UStb52IaY8dhmJAYCxCS_lVMyVAdfVgWHx6u1ZcWsNDhYCbFgA44rGbrKsFXZ-qOupEsBbU8eRV0CQgT5JtGsg-V76Wb9lgFfdmBb6bB0krN7GEnFgc7PE9ST3Ta28IBV94w6cze0RrrRb2jPb5BiGZ3jNlz4WVaGd-zpiyFsEp99mhgfofmtg-PtHbP9vc0ST3cUCfAK240OoHOeqPkw",
-    }
+      avatar:
+        "https://lh3.googleusercontent.com/aida-public/AB6AXuAqSOxGh9UnEt7aRX29od_iWb77r1fVoLYW1UStb52IaY8dhmJAYCxCS_lVMyVAdfVgWHx6u1ZcWsNDhYCbFgA44rGbrKsFXZ-qOupEsBbU8eRV0CQgT5JtGsg-V76Wb9lgFfdmBb6bB0krN7GEnFgc7PE9ST3Ta28IBV94w6cze0RrrRb2jPb5BiGZ3jNlz4WVaGd-zpiyFsEp99mhgfofmtg-PtHbP9vc0ST3cUCfAK240OoHOeqPkw",
+    },
   ];
 
   const mockUpcomingGuests = [
@@ -200,7 +254,7 @@ export default function VisitorsScreen() {
       visitor_name: "UrbanCompany: Plumber",
       designation: "Service",
       valid_until: "Tom, 2:00 PM",
-    }
+    },
   ];
 
   const displayPending = pendingPasses;
@@ -208,48 +262,78 @@ export default function VisitorsScreen() {
 
   return (
     <View style={styles.outerContainer}>
-      <StatusBar style='dark' />
+      <StatusBar style="dark" />
 
       {/* Top App Bar */}
       <View style={styles.topAppBar}>
         <View style={styles.topAppBarLeft}>
           <TouchableOpacity style={styles.iconBtn}>
-            <MaterialIcons name="grid-view" size={24} color={theme.colors.onSurfaceVariant} />
+            <MaterialIcons
+              name="grid-view"
+              size={24}
+              color={theme.colors.onSurfaceVariant}
+            />
           </TouchableOpacity>
           <Text style={styles.appBarTitle}>Visitors</Text>
         </View>
         <View style={styles.avatarWrapper}>
           <Image
-            source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuBpENPfhgHlo_-hu2vi1Sc5hsmLyBkd9YdJ4Riy5fesm5hg7LPpFpSbxshtBeoGbSvYTuzHRlhihNX954tK0nIkiH6LhG_D7uawfL81dzMLjqpuuOVlmBE0WhSilez3nQn9058Jc9NOKrvtX3IlWqV9-ApnOZYBLuYdg3ZIBF24ZfEPeIl9Yv2FWD4M58l8_h0PbDJvpRas8dptC9rM3IZox3S7Z3MuX5WUda6u6EHusPxAQ_4dqAttbA" }}
+            source={{
+              uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuBpENPfhgHlo_-hu2vi1Sc5hsmLyBkd9YdJ4Riy5fesm5hg7LPpFpSbxshtBeoGbSvYTuzHRlhihNX954tK0nIkiH6LhG_D7uawfL81dzMLjqpuuOVlmBE0WhSilez3nQn9058Jc9NOKrvtX3IlWqV9-ApnOZYBLuYdg3ZIBF24ZfEPeIl9Yv2FWD4M58l8_h0PbDJvpRas8dptC9rM3IZox3S7Z3MuX5WUda6u6EHusPxAQ_4dqAttbA",
+            }}
             style={styles.avatar}
           />
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+      >
         {profile.societyId === "mock-soc-1" && (
           <View style={styles.mockBanner}>
-            <MaterialIcons name="warning" size={16} color={theme.colors.error} />
+            <MaterialIcons
+              name="warning"
+              size={16}
+              color={theme.colors.error}
+            />
             <Text style={styles.mockBannerText}>
-              Offline Mock Mode. Please log out and register online to receive live visitor requests.
+              Offline Mock Mode. Please log out and register online to receive
+              live visitor requests.
             </Text>
           </View>
         )}
         {/* Custom Tab Switcher inside ScrollView */}
         <View style={styles.tabContainer}>
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === "approvals" && styles.tabButtonActive]}
+            style={[
+              styles.tabButton,
+              activeTab === "approvals" && styles.tabButtonActive,
+            ]}
             onPress={() => setActiveTab("approvals")}
           >
-            <Text style={[styles.tabText, activeTab === "approvals" && styles.tabTextActive]}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "approvals" && styles.tabTextActive,
+              ]}
+            >
               Approvals
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === "history" && styles.tabButtonActive]}
+            style={[
+              styles.tabButton,
+              activeTab === "history" && styles.tabButtonActive,
+            ]}
             onPress={() => setActiveTab("history")}
           >
-            <Text style={[styles.tabText, activeTab === "history" && styles.tabTextActive]}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "history" && styles.tabTextActive,
+              ]}
+            >
               History
             </Text>
           </TouchableOpacity>
@@ -274,20 +358,36 @@ export default function VisitorsScreen() {
                   <View key={item.id} style={styles.pendingCard}>
                     <View style={styles.pendingDetailsRow}>
                       <Image
-                        source={{ uri: item.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.visitor_name)}&background=random&color=fff` }}
+                        source={{
+                          uri:
+                            item.avatar ||
+                            `https://ui-avatars.com/api/?name=${encodeURIComponent(item.visitor_name)}&background=random&color=fff`,
+                        }}
                         style={styles.visitorAvatar}
                       />
                       <View style={styles.pendingInfo}>
-                        <Text style={styles.visitorNameText}>{item.visitor_name}</Text>
+                        <Text style={styles.visitorNameText}>
+                          {item.visitor_name}
+                        </Text>
                         <View style={styles.designationRow}>
-                          <MaterialIcons name={getVisitorIcon(item.designation)} size={14} color={theme.colors.secondary} />
-                          <Text style={styles.designationText}>{item.designation}</Text>
+                          <MaterialIcons
+                            name={getVisitorIcon(item.designation)}
+                            size={14}
+                            color={theme.colors.secondary}
+                          />
+                          <Text style={styles.designationText}>
+                            {item.designation}
+                          </Text>
                         </View>
-                        <Text style={styles.flatText}>Flat: {item.tower_no || "B"}-{item.flat_no || "402"}</Text>
+                        <Text style={styles.flatText}>
+                          Flat: {item.tower_no || "B"}-{item.flat_no || "402"}
+                        </Text>
                       </View>
                       <View style={styles.gateWrapper}>
                         <Text style={styles.gateLabel}>Waiting at</Text>
-                        <Text style={styles.gateText}>{item.gate || "Main Gate"}</Text>
+                        <Text style={styles.gateText}>
+                          {item.gate || "Main Gate"}
+                        </Text>
                       </View>
                     </View>
 
@@ -297,13 +397,24 @@ export default function VisitorsScreen() {
                         disabled={updatePassStatusMutation.isPending}
                         onPress={() => {
                           if (isMock) {
-                            Alert.alert("Action Mocked", "Rejected visitor via mock demo!");
+                            Alert.alert(
+                              "Action Mocked",
+                              "Rejected visitor via mock demo!",
+                            );
                           } else {
-                            handleAction(item.id, "Rejected", item.visitor_email);
+                            handleAction(
+                              item.id,
+                              "Rejected",
+                              item.visitor_email,
+                            );
                           }
                         }}
                       >
-                        <MaterialIcons name="close" size={16} color={theme.colors.error} />
+                        <MaterialIcons
+                          name="close"
+                          size={16}
+                          color={theme.colors.error}
+                        />
                         <Text style={styles.rejectBtnText}>Reject</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
@@ -311,9 +422,16 @@ export default function VisitorsScreen() {
                         disabled={updatePassStatusMutation.isPending}
                         onPress={() => {
                           if (isMock) {
-                            Alert.alert("Action Mocked", "Approved visitor via mock demo!");
+                            Alert.alert(
+                              "Action Mocked",
+                              "Approved visitor via mock demo!",
+                            );
                           } else {
-                            handleAction(item.id, "Approved", item.visitor_email);
+                            handleAction(
+                              item.id,
+                              "Approved",
+                              item.visitor_email,
+                            );
                           }
                         }}
                       >
@@ -326,13 +444,23 @@ export default function VisitorsScreen() {
               })
             ) : (
               <View style={styles.emptyPendingCard}>
-                <MaterialIcons name="doorbell" size={32} color={theme.colors.outline} />
-                <Text style={styles.emptyPendingText}>No pending requests at the gate.</Text>
+                <MaterialIcons
+                  name="doorbell"
+                  size={32}
+                  color={theme.colors.outline}
+                />
+                <Text style={styles.emptyPendingText}>
+                  No pending requests at the gate.
+                </Text>
               </View>
             )}
 
             {/* Upcoming Guests */}
-            <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 12 }]}>Upcoming Guests</Text>
+            <Text
+              style={[styles.sectionTitle, { marginTop: 24, marginBottom: 12 }]}
+            >
+              Upcoming Guests
+            </Text>
             {displayUpcoming.length > 0 ? (
               <View style={styles.upcomingList}>
                 {displayUpcoming.map((item: any) => {
@@ -340,22 +468,46 @@ export default function VisitorsScreen() {
                   return (
                     <View key={item.id} style={styles.upcomingCard}>
                       <View style={styles.upcomingLeft}>
-                        <View style={[styles.upcomingIconBox, { backgroundColor: item.designation === "Service" ? "rgba(213,227,253,0.3)" : "rgba(134,242,228,0.2)" }]}>
+                        <View
+                          style={[
+                            styles.upcomingIconBox,
+                            {
+                              backgroundColor:
+                                item.designation === "Service"
+                                  ? "rgba(213,227,253,0.3)"
+                                  : "rgba(134,242,228,0.2)",
+                            },
+                          ]}
+                        >
                           <MaterialIcons
-                            name={item.designation === "Service" ? "handyman" : "person"}
+                            name={
+                              item.designation === "Service"
+                                ? "handyman"
+                                : "person"
+                            }
                             size={20}
-                            color={item.designation === "Service" ? theme.colors.outline : theme.colors.secondary}
+                            color={
+                              item.designation === "Service"
+                                ? theme.colors.outline
+                                : theme.colors.secondary
+                            }
                           />
                         </View>
                         <View>
-                          <Text style={styles.upcomingNameText}>{item.visitor_name}</Text>
-                          <Text style={styles.upcomingDescText}>Visitor Type: {item.designation}</Text>
+                          <Text style={styles.upcomingNameText}>
+                            {item.visitor_name}
+                          </Text>
+                          <Text style={styles.upcomingDescText}>
+                            Visitor Type: {item.designation}
+                          </Text>
                         </View>
                       </View>
                       <View style={styles.upcomingRight}>
                         <Text style={styles.validLabel}>Valid Until</Text>
                         <Text style={styles.validTime}>
-                          {isMock ? item.valid_until : formatTime(item.expiry_time)}
+                          {isMock
+                            ? item.valid_until
+                            : formatTime(item.expiry_time)}
                         </Text>
                       </View>
                     </View>
@@ -364,20 +516,41 @@ export default function VisitorsScreen() {
               </View>
             ) : (
               <View style={styles.emptyPendingCard}>
-                <MaterialIcons name="event-available" size={32} color={theme.colors.outline} />
-                <Text style={styles.emptyPendingText}>No upcoming scheduled visitors.</Text>
+                <MaterialIcons
+                  name="event-available"
+                  size={32}
+                  color={theme.colors.outline}
+                />
+                <Text style={styles.emptyPendingText}>
+                  No upcoming scheduled visitors.
+                </Text>
               </View>
             )}
 
             {/* Visitors Inside */}
-            <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 12 }]}>Active Visitors (Inside)</Text>
+            <Text
+              style={[styles.sectionTitle, { marginTop: 24, marginBottom: 12 }]}
+            >
+              Active Visitors (Inside)
+            </Text>
             {verifiedVisitors.length > 0 ? (
               <View style={styles.upcomingList}>
                 {verifiedVisitors.map((item: any) => {
                   return (
-                    <View key={item.id} style={[styles.upcomingCard, { borderColor: "#2e7d32", borderWidth: 1 }]}>
+                    <View
+                      key={item.id}
+                      style={[
+                        styles.upcomingCard,
+                        { borderColor: "#2e7d32", borderWidth: 1 },
+                      ]}
+                    >
                       <View style={styles.upcomingLeft}>
-                        <View style={[styles.upcomingIconBox, { backgroundColor: "rgba(46, 125, 50, 0.1)" }]}>
+                        <View
+                          style={[
+                            styles.upcomingIconBox,
+                            { backgroundColor: "rgba(46, 125, 50, 0.1)" },
+                          ]}
+                        >
                           <MaterialIcons
                             name="check-circle"
                             size={20}
@@ -385,12 +558,18 @@ export default function VisitorsScreen() {
                           />
                         </View>
                         <View>
-                          <Text style={styles.upcomingNameText}>{item.visitor_name}</Text>
-                          <Text style={styles.upcomingDescText}>{item.designation} • Inside Society</Text>
+                          <Text style={styles.upcomingNameText}>
+                            {item.visitor_name}
+                          </Text>
+                          <Text style={styles.upcomingDescText}>
+                            {item.designation} • Inside Society
+                          </Text>
                         </View>
                       </View>
                       <View style={styles.upcomingRight}>
-                        <Text style={[styles.validLabel, { color: "#2e7d32" }]}>Checked In At</Text>
+                        <Text style={[styles.validLabel, { color: "#2e7d32" }]}>
+                          Checked In At
+                        </Text>
                         <Text style={styles.validTime}>
                           {formatTime(item.verified_at || item.created_at)}
                         </Text>
@@ -401,19 +580,29 @@ export default function VisitorsScreen() {
               </View>
             ) : (
               <View style={styles.emptyPendingCard}>
-                <MaterialIcons name="home" size={32} color={theme.colors.outline} />
-                <Text style={styles.emptyPendingText}>No active visitors inside your unit.</Text>
+                <MaterialIcons
+                  name="home"
+                  size={32}
+                  color={theme.colors.outline}
+                />
+                <Text style={styles.emptyPendingText}>
+                  No active visitors inside your unit.
+                </Text>
               </View>
             )}
             <View style={styles.bannerCard}>
               <ImageBackground
-                source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuCDRxlvqhh6kUzegIEZ4Rqg5Rr-aEY7Sli6EslMQZHaceiGmGGIIqODqnfjr5PyytQKkUwf1QI_lbVpIxhX1r_MgJ8Mthu9CaQ4YanEQs-YNYmSZrqmp028mB0pBcWiqAJV5CQFVdeTKMFnBbdP_eYh9vWsIOuU7v1M_KogjB5kI5E5E7KlrMJzqjjJ160B8M9Zya9uLZ4vAz2tbpeyTQLTBECRvNhgwwSCYi3gWDrrvwaOC0U7F0ZqwA" }}
+                source={{
+                  uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuCDRxlvqhh6kUzegIEZ4Rqg5Rr-aEY7Sli6EslMQZHaceiGmGGIIqODqnfjr5PyytQKkUwf1QI_lbVpIxhX1r_MgJ8Mthu9CaQ4YanEQs-YNYmSZrqmp028mB0pBcWiqAJV5CQFVdeTKMFnBbdP_eYh9vWsIOuU7v1M_KogjB5kI5E5E7KlrMJzqjjJ160B8M9Zya9uLZ4vAz2tbpeyTQLTBECRvNhgwwSCYi3gWDrrvwaOC0U7F0ZqwA",
+                }}
                 style={styles.bannerBg}
                 imageStyle={{ borderRadius: 16 }}
               >
                 <View style={styles.bannerOverlay}>
                   <Text style={styles.bannerTitle}>Safety First</Text>
-                  <Text style={styles.bannerText}>Monitor all entries in real-time for ultimate peace of mind.</Text>
+                  <Text style={styles.bannerText}>
+                    Monitor all entries in real-time for ultimate peace of mind.
+                  </Text>
                 </View>
               </ImageBackground>
             </View>
@@ -421,12 +610,22 @@ export default function VisitorsScreen() {
         ) : (
           <View style={styles.historyList}>
             {isLoading ? (
-              <ActivityIndicator size="small" color={theme.colors.secondary} style={{ marginVertical: 32 }} />
+              <ActivityIndicator
+                size="small"
+                color={theme.colors.secondary}
+                style={{ marginVertical: 32 }}
+              />
             ) : historyList.length === 0 ? (
               <View style={styles.emptyCard}>
-                <MaterialIcons name="history" size={48} color={theme.colors.outlineVariant} />
+                <MaterialIcons
+                  name="history"
+                  size={48}
+                  color={theme.colors.outlineVariant}
+                />
                 <Text style={styles.emptyTitle}>No Visitor History</Text>
-                <Text style={styles.emptyText}>Visitor passes you generate will show up here.</Text>
+                <Text style={styles.emptyText}>
+                  Visitor passes you generate will show up here.
+                </Text>
               </View>
             ) : (
               historyList.map((item) => {
@@ -435,18 +634,39 @@ export default function VisitorsScreen() {
                   <View key={item.id} style={styles.historyCard}>
                     <View style={styles.historyLeft}>
                       <View style={styles.historyIconWrapper}>
-                        <MaterialIcons name={getVisitorIcon(item.designation)} size={22} color={theme.colors.onSurfaceVariant} />
+                        <MaterialIcons
+                          name={getVisitorIcon(item.designation)}
+                          size={22}
+                          color={theme.colors.onSurfaceVariant}
+                        />
                       </View>
                       <View>
-                        <Text style={styles.historyName}>{item.visitor_name}</Text>
+                        <Text style={styles.historyName}>
+                          {item.visitor_name}
+                        </Text>
                         <Text style={styles.historyDetails}>
                           {item.designation} • {formatTime(item.created_at)}
                         </Text>
-                        <Text style={styles.historyDestination}>Destination: Tower {item.tower_no}, Flat {item.flat_no}</Text>
+                        <Text style={styles.historyDestination}>
+                          Destination: Tower {item.tower_no}, Flat{" "}
+                          {item.flat_no}
+                        </Text>
                       </View>
                     </View>
-                    <View style={[styles.statusBadge, { backgroundColor: statusColor.bg }]}>
-                      <Text style={[styles.statusBadgeText, { color: statusColor.text }]}>{item.status}</Text>
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        { backgroundColor: statusColor.bg },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusBadgeText,
+                          { color: statusColor.text },
+                        ]}
+                      >
+                        {item.status}
+                      </Text>
                     </View>
                   </View>
                 );

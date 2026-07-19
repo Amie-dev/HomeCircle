@@ -259,7 +259,7 @@ export default function SocietySetupScreen() {
       style={{ flex: 1 }}
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <StatusBar style="light" />
+      <StatusBar style="dark" />
 
       {/* Header bar */}
       <View style={styles.header}>

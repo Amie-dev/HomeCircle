@@ -14,6 +14,7 @@ import { theme } from "../../../theme";
 import { useProfileStore } from "../../../store/useProfileStore";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 
 export default function AdminSettings() {
   const router = useRouter();
@@ -50,6 +51,8 @@ export default function AdminSettings() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* TopAppBar */}
+            <StatusBar style="dark" />
+      
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity onPress={() => router.back()}>

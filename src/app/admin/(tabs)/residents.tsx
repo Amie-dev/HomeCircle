@@ -1,24 +1,25 @@
-import React, { useState, useEffect } from "react";
+import { MaterialIcons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
+import * as Notifications from "expo-notifications";
+import { StatusBar } from "expo-status-bar";
+import React, { useEffect, useState } from "react";
 import {
-  StyleSheet,
-  Text,
-  View,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
-  Image,
   Alert,
+  Image,
   Modal,
   Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
-import { theme } from "../../../theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Notifications from "expo-notifications";
+import { supabase } from "../../../../utils/supabase";
 import { useResidentVerifications, useUpdateResidentVerification } from "../../../hooks/useRequestResident";
 import { useProfileStore } from "../../../store/useProfileStore";
-import { supabase } from "../../../../utils/supabase";
-import { useQueryClient } from "@tanstack/react-query";
+import { theme } from "../../../theme";
 
 // Configure notification behavior for when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -140,8 +141,8 @@ export default function ManageResidents() {
         id: v.id,
         userId: v.user_id,
         name: v.users?.full_name || "Unknown Resident",
-        unit: v.role === "Guard" 
-          ? "Security Guard" 
+        unit: v.role === "Guard"
+          ? "Security Guard"
           : `${v.verification_details?.towerName || ""}, ${v.verification_details?.flatNumber || ""}`,
         status: v.role === "Guard"
           ? "Staff"
@@ -185,7 +186,7 @@ export default function ManageResidents() {
     const matchesSearch =
       resident.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       resident.unit.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     const matchesFilter =
       selectedFilter === "All" || resident.status === selectedFilter;
 
@@ -217,7 +218,7 @@ export default function ManageResidents() {
           isVerified: newStatus === "Verified",
           previousStatus: previousStatus === "Verified",
         });
-        
+
         Alert.alert(
           "Status Updated",
           `${selectedResident.name}'s status has been successfully saved to the database.`
@@ -282,6 +283,7 @@ export default function ManageResidents() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Top App Bar */}
+      <StatusBar style="dark" />
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.headerTitle}>Manage Residents</Text>

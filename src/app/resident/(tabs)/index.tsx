@@ -154,7 +154,7 @@ export default function ResidentDashboard() {
 
   return (
     <View style={styles.outerContainer}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
       {/* Top App Bar Header */}
       <View style={styles.topAppBar}>

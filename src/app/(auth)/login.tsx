@@ -190,7 +190,7 @@ export default function LoginScreen() {
         style={{ flex: 1 }}
       >
         <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-          <StatusBar style="light" />
+      <StatusBar style="dark" />
 
           {/* Header Anchor */}
           <View style={styles.header}>

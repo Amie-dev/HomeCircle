@@ -18,6 +18,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../../theme";
 import { supabase } from "../../../../utils/supabase";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 
 interface Flat {
   id: string;
@@ -241,7 +242,8 @@ export default function FlatManagementScreen() {
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
-    >
+    >      <StatusBar style="dark" />
+    
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <View style={styles.headerContent}>

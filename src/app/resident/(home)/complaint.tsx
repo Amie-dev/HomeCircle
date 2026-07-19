@@ -156,7 +156,7 @@ export default function RaiseComplaintScreen() {
       style={{ flex: 1 }}
     >
       <View style={styles.outerContainer}>
-        <StatusBar style="light" />
+      <StatusBar style="dark" />
 
         {/* Top App Bar */}
         <View style={[styles.topAppBar, { paddingTop: insets.top }]}>

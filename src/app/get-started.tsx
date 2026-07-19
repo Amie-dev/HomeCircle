@@ -212,7 +212,7 @@ React.useEffect(() => {
 
   return (
     <View style={styles.container}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
       {/* Top Header Bar (Sticky) */}
       <SafeAreaView edges={["top"]} style={styles.safeHeader}>

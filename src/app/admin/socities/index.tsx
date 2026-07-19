@@ -17,6 +17,7 @@ import { theme } from "../../../theme";
 import { supabase } from "../../../../utils/supabase";
 import { useProfileStore } from "../../../store/useProfileStore";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 
 export default function SocietyManagementScreen() {
   const router = useRouter();
@@ -154,6 +155,8 @@ export default function SocietyManagementScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
+            <StatusBar style="dark" />
+      
       {/* TopAppBar */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <View style={styles.headerContent}>
