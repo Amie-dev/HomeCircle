@@ -42,6 +42,14 @@ export default function GuardScanner() {
   const [vehicleNo, setVehicleNo] = useState("");
   const [registering, setRegistering] = useState(false);
 
+  // Scanned verification state
+  const [verificationModalVisible, setVerificationModalVisible] = useState(false);
+  const [scannedPass, setScannedPass] = useState<any>(null);
+  const [residentFlat, setResidentFlat] = useState<any>(null);
+  const [residentTower, setResidentTower] = useState<any>(null);
+  const [residentList, setResidentList] = useState<any[]>([]);
+  const [actionProcessing, setActionProcessing] = useState(false);
+
   const [recentLogs, setRecentLogs] = useState<any[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [gateName, setGateName] = useState("Main Gate");
@@ -176,7 +184,8 @@ export default function GuardScanner() {
       }
 
       // Check if it is expired
-      const validUntil = new Date(pass.valid_until);
+      const expiryDate = pass.valid_until || pass.expiry_time;
+      const validUntil = new Date(expiryDate);
       if (validUntil.getTime() < Date.now()) {
         Alert.alert(
           "Pass Expired",
@@ -197,11 +206,95 @@ export default function GuardScanner() {
         return;
       }
 
-      // Log in visitor_logs
+      // Now query the matching resident details
+      let matchedTower = null;
+      let matchedFlat = null;
+      let list: any[] = [];
+
+      if (profile.societyId) {
+        const { data: towersData } = await supabase
+          .from("towers")
+          .select("id, name, tower_id")
+          .eq("society_id", profile.societyId);
+
+        if (towersData) {
+          matchedTower = towersData.find(
+            (t) =>
+              t.name?.toLowerCase() === pass.tower_no?.toLowerCase() ||
+              t.tower_id?.toLowerCase() === pass.tower_no?.toLowerCase() ||
+              t.name?.toLowerCase().includes(pass.tower_no?.toLowerCase())
+          );
+        }
+
+        if (matchedTower) {
+          const { data: flatData } = await supabase
+            .from("flats")
+            .select("id, flat_number, floor")
+            .eq("tower_id", matchedTower.id)
+            .eq("flat_number", pass.flat_no)
+            .maybeSingle();
+
+          if (flatData) {
+            matchedFlat = flatData;
+
+            const { data: membersData } = await supabase
+              .from("societymembers")
+              .select("user_id")
+              .eq("flat_id", flatData.id);
+
+            if (membersData && membersData.length > 0) {
+              const userIds = membersData.map((m) => m.user_id);
+              const { data: usersData } = await supabase
+                .from("users")
+                .select("id, full_name, email, phone, notification_token")
+                .in("id", userIds);
+
+              if (usersData) {
+                list = await Promise.all(
+                  usersData.map(async (u) => {
+                    if (!u.notification_token) {
+                      const { data: guestData } = await supabase
+                        .from("guestusers")
+                        .select("notification_token")
+                        .eq("id", u.id)
+                        .maybeSingle();
+                      if (guestData?.notification_token) {
+                        return { ...u, notification_token: guestData.notification_token };
+                      }
+                    }
+                    return u;
+                  })
+                );
+              }
+            }
+          }
+        }
+      }
+
+      // Set scanned pass and matched resident details to state and open popup
+      setScannedPass(pass);
+      setResidentTower(matchedTower);
+      setResidentFlat(matchedFlat);
+      setResidentList(list);
+      setVerificationModalVisible(true);
+
+    } catch (err: any) {
+      Alert.alert("Scan Error", err.message || "Failed to verify pass.", [
+        { text: "OK", onPress: () => setScanned(false) }
+      ]);
+    }
+  };
+
+  const handleConfirmVerify = async () => {
+    if (!scannedPass || !profile?.id) return;
+    setActionProcessing(true);
+
+    try {
+      // 1. Log check-in in visitor_logs
       const { error: logErr } = await supabase
         .from("visitor_logs")
         .insert({
-          pass_id: pass.id,
+          pass_id: scannedPass.id,
           logged_by: profile.id,
           action_type: "Check-in",
           gate_name: gateName,
@@ -209,7 +302,7 @@ export default function GuardScanner() {
 
       if (logErr) throw logErr;
 
-      // Update pass status to Verified
+      // 2. Update pass status to Verified
       const { error: updateErr } = await supabase
         .from("requestpasses")
         .update({
@@ -217,79 +310,56 @@ export default function GuardScanner() {
           verified_at: new Date().toISOString(),
           verified_by: profile.fullName,
         })
-        .eq("id", pass.id);
+        .eq("id", scannedPass.id);
 
       if (updateErr) throw updateErr;
 
-      // Notify flat admin/resident of the check-in
-      try {
-        const { data: flatData } = await supabase
-          .from("flats")
-          .select("id")
-          .eq("flat_number", pass.flat_no)
-          .maybeSingle();
-
-        if (flatData) {
-          const { data: member } = await supabase
-            .from("societymembers")
-            .select("user_id")
-            .eq("flat_id", flatData.id)
-            .maybeSingle();
-
-          if (member) {
-            // Send push notification to resident
-            try {
-              const { data: resUserData } = await supabase
-                .from("users")
-                .select("notification_token")
-                .eq("id", member.user_id)
-                .maybeSingle();
-
-              if (resUserData?.notification_token) {
-                await sendPushNotification({
-                  token: resUserData.notification_token,
-                  title: "Visitor Checked In 🚪",
-                  body: `${pass.visitor_name} has checked in at the gate.`,
-                  data: {
-                    screen: "/resident",
-                    url: "/resident",
-                  },
-                });
-              }
-            } catch (err) {
-              console.warn("Failed to send push notification to resident:", err);
-            }
-
-            // Insert resident notification log in db
-            await supabase
-              .from("push_notifications")
-              .insert({
-                user_id: member.user_id,
-                title: "Visitor Checked In 🚪",
-                body: `${pass.visitor_name} has checked in at the gate.`,
+      // 3. Notify flat admin/residents of the check-in
+      for (const resident of residentList) {
+        if (resident.notification_token) {
+          try {
+            await sendPushNotification({
+              token: resident.notification_token,
+              title: "Visitor Checked In 🚪",
+              body: `${scannedPass.visitor_name} has checked in at the gate.`,
+              data: {
                 screen: "/resident",
-                status: "Sent",
-              });
+                url: "/resident",
+              },
+            });
+          } catch (err) {
+            console.warn(`Failed to send push notification to resident ${resident.full_name}:`, err);
           }
         }
-      } catch (notifErr) {
-        console.warn("Failed to notify resident of visitor check-in:", notifErr);
+
+        try {
+          await supabase
+            .from("push_notifications")
+            .insert({
+              user_id: resident.id,
+              title: "Visitor Checked In 🚪",
+              body: `${scannedPass.visitor_name} has checked in at the gate.`,
+              screen: "/resident",
+              status: "Sent",
+            });
+        } catch (dbNotifErr) {
+          console.warn(`Failed to log push notification for resident ${resident.full_name}:`, dbNotifErr);
+        }
       }
 
-      // Notify visitor of check-in
+      // 4. Notify guest of pass check-in using their email to fetch token
       try {
-        if (pass.user_id) {
-          // Send push notification to visitor
-          try {
-            const { data: visUserData } = await supabase
-              .from("users")
-              .select("notification_token")
-              .eq("id", pass.user_id)
-              .maybeSingle();
+        const { data: guestData } = await supabase
+          .from("guestusers")
+          .select("id, notification_token")
+          .eq("email", scannedPass.visitor_email)
+          .maybeSingle();
 
-            if (visUserData?.notification_token) {
+        if (guestData) {
+          if (guestData.notification_token) {
+            try {
               await sendPushNotification({
-                token: visUserData.notification_token,
+                token: guestData.notification_token,
                 title: "Pass Verified ✔️",
                 body: "Your pass has been scanned and verified at the gate.",
                 data: {
@@ -297,39 +367,92 @@ export default function GuardScanner() {
                   url: "/request-pass",
                 },
               });
+            } catch (err) {
+              console.warn("Failed to send push notification to visitor:", err);
             }
-          } catch (err) {
-            console.warn("Failed to send push notification to visitor:", err);
           }
 
-          // Insert visitor notification log in db
-          await supabase
-            .from("push_notifications")
-            .insert({
-              user_id: pass.user_id,
-              title: "Pass Verified ✔️",
-              body: "Your pass has been scanned and verified at the gate.",
-              screen: "/request-pass",
-              status: "Sent",
-            });
+          try {
+            await supabase
+              .from("push_notifications")
+              .insert({
+                user_id: guestData.id,
+                title: "Pass Verified ✔️",
+                body: "Your pass has been scanned and verified at the gate.",
+                screen: "/request-pass",
+                status: "Sent",
+              });
+          } catch (dbNotifErr) {
+            console.warn("Failed to log push notification for visitor:", dbNotifErr);
+          }
         }
-      } catch (visitorNotifErr) {
-        console.warn("Failed to notify visitor of check-in:", visitorNotifErr);
+      } catch (guestNotifErr) {
+        console.warn("Failed to notify visitor:", guestNotifErr);
       }
 
       Alert.alert(
         "Access Approved",
-        `Visitor: ${pass.visitor_name}\nType: ${pass.designation}\nApartment: T-${pass.tower_no}, F-${pass.flat_no}\n\nEntry logged successfully.`,
+        `Visitor: ${scannedPass.visitor_name}\nType: ${scannedPass.designation}\nApartment: T-${scannedPass.tower_no}, F-${scannedPass.flat_no}\n\nEntry logged successfully.`,
         [{ text: "OK", onPress: () => {
+          setVerificationModalVisible(false);
+          setScannedPass(null);
+          setResidentTower(null);
+          setResidentFlat(null);
+          setResidentList([]);
           setScanned(false);
           fetchRecentLogs();
         }}]
       );
     } catch (err: any) {
-      Alert.alert("Scan Error", err.message || "Failed to verify pass.", [
-        { text: "OK", onPress: () => setScanned(false) }
-      ]);
+      Alert.alert("Verification Error", err.message || "Failed to confirm check-in.");
+    } finally {
+      setActionProcessing(false);
     }
+  };
+
+  const handleRejectPass = () => {
+    Alert.alert(
+      "Confirm Action",
+      "Are you sure you want to reject this entry and invalidate the pass?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reject Pass",
+          style: "destructive",
+          onPress: async () => {
+            setActionProcessing(true);
+            try {
+              const { error: rejectErr } = await supabase
+                .from("requestpasses")
+                .update({
+                  status: "Rejected",
+                })
+                .eq("id", scannedPass.id);
+
+              if (rejectErr) throw rejectErr;
+
+              Alert.alert(
+                "Pass Rejected",
+                "The pass has been successfully marked as rejected.",
+                [{ text: "OK", onPress: () => {
+                  setVerificationModalVisible(false);
+                  setScannedPass(null);
+                  setResidentTower(null);
+                  setResidentFlat(null);
+                  setResidentList([]);
+                  setScanned(false);
+                  fetchRecentLogs();
+                }}]
+              );
+            } catch (err: any) {
+              Alert.alert("Reject Error", err.message || "Failed to reject pass.");
+            } finally {
+              setActionProcessing(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleManualRegister = async () => {
@@ -587,6 +710,165 @@ export default function GuardScanner() {
           )}
         </View>
       </ScrollView>
+
+      {/* QR Code Scan Verification Modal */}
+      <Modal
+        visible={verificationModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => {
+          if (!actionProcessing) {
+            setVerificationModalVisible(false);
+            setScannedPass(null);
+            setResidentTower(null);
+            setResidentFlat(null);
+            setResidentList([]);
+            setScanned(false);
+          }
+        }}
+      >
+        <View style={styles.verificationModalOverlay}>
+          <View style={styles.verificationModalContent}>
+            <View style={styles.verificationModalHeader}>
+              <MaterialIcons name="fact-check" size={26} color={theme.colors.primary} />
+              <Text style={styles.verificationModalTitle}>Verify Visitor Entry</Text>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.verificationScroll}>
+              
+              {/* Visitor Details Card */}
+              <Text style={styles.sectionHeader}>VISITOR INFORMATION (SCANNED)</Text>
+              <View style={styles.infoCard}>
+                <View style={styles.infoRow}>
+                  <MaterialIcons name="person" size={20} color={theme.colors.secondary} />
+                  <View style={styles.infoTextContainer}>
+                    <Text style={styles.infoLabel}>Visitor Name</Text>
+                    <Text style={styles.infoVal}>{scannedPass?.visitor_name || "N/A"}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.infoRow}>
+                  <MaterialIcons name="phone" size={20} color={theme.colors.secondary} />
+                  <View style={styles.infoTextContainer}>
+                    <Text style={styles.infoLabel}>Phone Number</Text>
+                    <Text style={styles.infoVal}>{scannedPass?.visitor_phone || "N/A"}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.infoRow}>
+                  <MaterialIcons name="email" size={20} color={theme.colors.secondary} />
+                  <View style={styles.infoTextContainer}>
+                    <Text style={styles.infoLabel}>Email Address</Text>
+                    <Text style={styles.infoVal}>{scannedPass?.visitor_email || "N/A"}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.infoRow}>
+                  <MaterialIcons name="label" size={20} color={theme.colors.secondary} />
+                  <View style={styles.infoTextContainer}>
+                    <Text style={styles.infoLabel}>Purpose / Role</Text>
+                    <Text style={[styles.infoVal, styles.designationTag]}>{scannedPass?.designation || "Guest"}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.infoRow}>
+                  <MaterialIcons name="meeting-room" size={20} color={theme.colors.secondary} />
+                  <View style={styles.infoTextContainer}>
+                    <Text style={styles.infoLabel}>Destination Flat</Text>
+                    <Text style={styles.infoVal}>Tower {scannedPass?.tower_no}, Flat {scannedPass?.flat_no}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Resident Verification Card */}
+              <Text style={styles.sectionHeader}>APPROVED RESIDENT DETAILS</Text>
+              {residentFlat ? (
+                <View style={[styles.infoCard, styles.verifiedResidentCard]}>
+                  <View style={styles.statusBadgeSuccess}>
+                    <MaterialIcons name="verified" size={14} color="#006a61" />
+                    <Text style={styles.statusBadgeTextSuccess}>Resident Exists & Verified</Text>
+                  </View>
+
+                  <View style={styles.infoRow}>
+                    <MaterialIcons name="home" size={20} color="#006a61" />
+                    <View style={styles.infoTextContainer}>
+                      <Text style={styles.infoLabel}>Matched Address</Text>
+                      <Text style={styles.infoVal}>
+                        Tower {residentTower?.name || scannedPass?.tower_no}, Flat {residentFlat?.flat_number}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {residentList.length > 0 ? (
+                    residentList.map((res, index) => (
+                      <View key={res.id} style={[styles.infoRow, index > 0 && styles.infoRowDivider]}>
+                        <MaterialIcons name="account-circle" size={20} color="#006a61" />
+                        <View style={styles.infoTextContainer}>
+                          <Text style={styles.infoLabel}>Resident Name</Text>
+                          <Text style={styles.infoVal}>{res.full_name}</Text>
+                          <Text style={styles.infoSubText}>{res.phone} • {res.email}</Text>
+                        </View>
+                      </View>
+                    ))
+                  ) : (
+                    <View style={styles.infoRow}>
+                      <MaterialIcons name="warning" size={20} color={theme.colors.error} />
+                      <View style={styles.infoTextContainer}>
+                        <Text style={styles.infoLabel}>Resident Profile</Text>
+                        <Text style={[styles.infoVal, { color: theme.colors.error }]}>No registered profile in flat</Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View style={[styles.infoCard, styles.mismatchResidentCard]}>
+                  <View style={styles.statusBadgeError}>
+                    <MaterialIcons name="report-problem" size={14} color={theme.colors.error} />
+                    <Text style={styles.statusBadgeTextError}>MISMATCH / NOT FOUND</Text>
+                  </View>
+                  <Text style={styles.mismatchText}>
+                    This flat ({scannedPass?.tower_no} - {scannedPass?.flat_no}) does not exist in the {profile?.societyName || "society"} directory or has not been registered yet.
+                  </Text>
+                </View>
+              )}
+
+            </ScrollView>
+
+            {/* Action Buttons */}
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[
+                  styles.actionBtn, 
+                  styles.verifyBtn, 
+                  (!residentFlat || actionProcessing) && styles.actionBtnDisabled
+                ]}
+                onPress={handleConfirmVerify}
+                disabled={!residentFlat || actionProcessing}
+                activeOpacity={0.8}
+              >
+                {actionProcessing ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <>
+                    <MaterialIcons name="check-circle" size={20} color="#ffffff" />
+                    <Text style={styles.actionBtnText}>Verified & Check-in</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.rejectBtn, actionProcessing && styles.actionBtnDisabled]}
+                onPress={handleRejectPass}
+                disabled={actionProcessing}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="cancel" size={20} color={theme.colors.error} />
+                <Text style={styles.rejectBtnText}>Reject / Mismatch Data</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Manual Registration Modal */}
       <Modal
@@ -1118,5 +1400,184 @@ const styles = StyleSheet.create({
     ...theme.typography.button,
     color: "#ffffff",
     fontSize: 16,
+  },
+  verificationModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  verificationModalContent: {
+    width: "100%",
+    backgroundColor: theme.colors.background,
+    borderRadius: 24,
+    maxHeight: "85%",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 15,
+    elevation: 10,
+  },
+  verificationModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surfaceContainerLowest,
+  },
+  verificationModalTitle: {
+    ...theme.typography.headlineMd,
+    fontWeight: "700",
+    color: theme.colors.primary,
+  },
+  verificationScroll: {
+    padding: 20,
+  },
+  sectionHeader: {
+    ...theme.typography.labelMd,
+    fontWeight: "700",
+    color: theme.colors.outline,
+    letterSpacing: 1,
+    marginBottom: 10,
+    marginTop: 10,
+  },
+  infoCard: {
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    gap: 14,
+  },
+  verifiedResidentCard: {
+    borderColor: "rgba(0, 106, 97, 0.3)",
+    backgroundColor: "rgba(0, 106, 97, 0.02)",
+  },
+  mismatchResidentCard: {
+    borderColor: "rgba(186, 26, 26, 0.3)",
+    backgroundColor: "rgba(186, 26, 26, 0.02)",
+  },
+  statusBadgeSuccess: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(0, 106, 97, 0.08)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+    marginBottom: 4,
+  },
+  statusBadgeTextSuccess: {
+    ...theme.typography.labelMd,
+    color: "#006a61",
+    fontWeight: "700",
+  },
+  statusBadgeError: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(186, 26, 26, 0.08)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+    marginBottom: 4,
+  },
+  statusBadgeTextError: {
+    ...theme.typography.labelMd,
+    color: theme.colors.error,
+    fontWeight: "700",
+  },
+  mismatchText: {
+    ...theme.typography.bodyMd,
+    color: theme.colors.error,
+    lineHeight: 20,
+  },
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  infoRowDivider: {
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.outlineVariant,
+    paddingTop: 14,
+  },
+  infoTextContainer: {
+    flex: 1,
+    gap: 2,
+  },
+  infoLabel: {
+    ...theme.typography.labelMd,
+    color: theme.colors.outline,
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  infoVal: {
+    ...theme.typography.bodyLg,
+    color: theme.colors.primary,
+    fontWeight: "600",
+  },
+  infoSubText: {
+    ...theme.typography.labelMd,
+    color: theme.colors.outline,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  designationTag: {
+    backgroundColor: theme.colors.secondaryContainer,
+    color: theme.colors.secondary,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+    overflow: "hidden",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 12,
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surfaceContainerLowest,
+  },
+  actionBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  verifyBtn: {
+    backgroundColor: theme.colors.secondary,
+  },
+  rejectBtn: {
+    borderWidth: 1.5,
+    borderColor: theme.colors.error,
+    backgroundColor: "transparent",
+  },
+  actionBtnDisabled: {
+    opacity: 0.5,
+  },
+  actionBtnText: {
+    ...theme.typography.button,
+    color: "#ffffff",
+    fontWeight: "700",
+  },
+  rejectBtnText: {
+    ...theme.typography.button,
+    color: theme.colors.error,
+    fontWeight: "700",
   },
 });

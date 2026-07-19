@@ -7,7 +7,10 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
+  Modal,
+  Alert,
 } from "react-native";
+import { sendPushNotification } from "../../../../utils/notificationService";
 import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../../theme";
 import { supabase } from "../../../../utils/supabase";
@@ -23,8 +26,38 @@ export default function GuardLogs() {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Detailed Modal State
+  const [selectedLog, setSelectedLog] = useState<any>(null);
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [passLogs, setPassLogs] = useState<any[]>([]);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [checkoutProcessing, setCheckoutProcessing] = useState(false);
+  const [gateName, setGateName] = useState("Main Gate");
+
+  // Fetch guard active gate name if possible
+  useEffect(() => {
+    const fetchActiveGate = async () => {
+      if (!profile?.id) return;
+      try {
+        const { data, error } = await supabase
+          .from("guard_assignments")
+          .select("gate_name")
+          .eq("guard_id", profile.id)
+          .maybeSingle();
+
+        if (error) throw error;
+        if (data?.gate_name) {
+          setGateName(data.gate_name);
+        }
+      } catch (err: any) {
+        console.error("Error fetching gate name in logs:", err.message);
+      }
+    };
+    fetchActiveGate();
+  }, [profile?.id]);
+
   const fetchLogs = async () => {
-    if (!profile?.societyId) return;
+    if (!profile?.id) return;
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -38,12 +71,13 @@ export default function GuardLogs() {
             visitor_name,
             designation,
             phone_number:visitor_phone,
+            visitor_email,
             tower_no,
             flat_no,
             resident_details
           )
         `)
-        .eq("requestpasses.resident_details->>societyId", profile.societyId)
+        .eq("logged_by", profile.id)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -54,6 +88,203 @@ export default function GuardLogs() {
       console.error("Error fetching logs:", err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPassStatus = async (passId: string) => {
+    try {
+      setLoadingDetails(true);
+      const { data, error } = await supabase
+        .from("visitor_logs")
+        .select("id, action_type, created_at, gate_name")
+        .eq("pass_id", passId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      if (data) {
+        setPassLogs(data);
+      }
+    } catch (err: any) {
+      console.error("Error fetching pass status:", err.message);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  const handleOpenDetails = (log: any) => {
+    setSelectedLog(log);
+    setDetailsModalVisible(true);
+    if (log.requestpasses?.id) {
+      fetchPassStatus(log.requestpasses.id);
+    }
+  };
+
+  const handleLogCheckout = async () => {
+    const p = selectedLog?.requestpasses;
+    if (!p || !profile?.id) return;
+
+    setCheckoutProcessing(true);
+    try {
+      // 1. Insert Check-out log
+      const { error: logErr } = await supabase
+        .from("visitor_logs")
+        .insert({
+          pass_id: p.id,
+          logged_by: profile.id,
+          action_type: "Check-out",
+          gate_name: gateName,
+        });
+
+      if (logErr) throw logErr;
+
+      // 2. Fetch matched residents of the destination flat to notify them
+      let residentList: any[] = [];
+      try {
+        if (profile.societyId) {
+          const { data: towersData } = await supabase
+            .from("towers")
+            .select("id, name, tower_id")
+            .eq("society_id", profile.societyId);
+
+          let matchedTower = null;
+          if (towersData) {
+            matchedTower = towersData.find(
+              (t) =>
+                t.name?.toLowerCase() === p.tower_no?.toLowerCase() ||
+                t.tower_id?.toLowerCase() === p.tower_no?.toLowerCase() ||
+                t.name?.toLowerCase().includes(p.tower_no?.toLowerCase())
+            );
+          }
+
+          if (matchedTower) {
+            const { data: flatData } = await supabase
+              .from("flats")
+              .select("id")
+              .eq("tower_id", matchedTower.id)
+              .eq("flat_number", p.flat_no)
+              .maybeSingle();
+
+            if (flatData) {
+              const { data: membersData } = await supabase
+                .from("societymembers")
+                .select("user_id")
+                .eq("flat_id", flatData.id);
+
+              if (membersData && membersData.length > 0) {
+                const userIds = membersData.map((m) => m.user_id);
+                const { data: usersData } = await supabase
+                  .from("users")
+                  .select("id, full_name, notification_token")
+                  .in("id", userIds);
+
+                if (usersData) {
+                  residentList = await Promise.all(
+                    usersData.map(async (u) => {
+                      if (!u.notification_token) {
+                        const { data: guestData } = await supabase
+                          .from("guestusers")
+                          .select("notification_token")
+                          .eq("id", u.id)
+                          .maybeSingle();
+                        if (guestData?.notification_token) {
+                          return { ...u, notification_token: guestData.notification_token };
+                        }
+                      }
+                      return u;
+                    })
+                  );
+                }
+              }
+            }
+          }
+        }
+      } catch (smErr) {
+        console.warn("Failed to retrieve residents for notification:", smErr);
+      }
+
+      // 3. Send notifications to residents
+      for (const resident of residentList) {
+        if (resident.notification_token) {
+          try {
+            await sendPushNotification({
+              token: resident.notification_token,
+              title: "Visitor Checked Out 🚪",
+              body: `${p.visitor_name} has checked out and left the society.`,
+              data: {
+                screen: "/resident",
+                url: "/resident",
+              },
+            });
+          } catch (err) {
+            console.warn(`Failed to send checkout notification to resident:`, err);
+          }
+        }
+
+        try {
+          await supabase
+            .from("push_notifications")
+            .insert({
+              user_id: resident.id,
+              title: "Visitor Checked Out 🚪",
+              body: `${p.visitor_name} has checked out and left the society.`,
+              screen: "/resident",
+              status: "Sent",
+            });
+        } catch (dbNotifErr) {
+          console.warn("Failed to log checkout push notification for resident:", dbNotifErr);
+        }
+      }
+
+      // 4. Send checkout notification to guest
+      try {
+        const { data: guestData } = await supabase
+          .from("guestusers")
+          .select("id, notification_token")
+          .eq("email", p.visitor_email)
+          .maybeSingle();
+
+        if (guestData) {
+          if (guestData.notification_token) {
+            try {
+              await sendPushNotification({
+                token: guestData.notification_token,
+                title: "Pass Checked Out 👋",
+                body: "You have successfully checked out of the society. Thank you!",
+                data: {
+                  screen: "/request-pass",
+                  url: "/request-pass",
+                },
+              });
+            } catch (err) {
+              console.warn("Failed to send checkout notification to visitor:", err);
+            }
+          }
+
+          try {
+            await supabase
+              .from("push_notifications")
+              .insert({
+                user_id: guestData.id,
+                title: "Pass Checked Out 👋",
+                body: "You have successfully checked out of the society. Thank you!",
+                screen: "/request-pass",
+                status: "Sent",
+              });
+          } catch (dbNotifErr) {
+            console.warn("Failed to log checkout push notification for visitor:", dbNotifErr);
+          }
+        }
+      } catch (guestNotifErr) {
+        console.warn("Failed to notify guest of checkout:", guestNotifErr);
+      }
+
+      Alert.alert("Check-out Recorded", `${p.visitor_name} has been checked out successfully.`);
+      fetchPassStatus(p.id);
+      fetchLogs();
+    } catch (err: any) {
+      Alert.alert("Checkout Error", err.message || "Failed to record checkout.");
+    } finally {
+      setCheckoutProcessing(false);
     }
   };
 
@@ -113,7 +344,12 @@ export default function GuardLogs() {
                 const p = log.requestpasses;
                 const isCheckin = log.action_type === "Check-in";
                 return (
-                  <View key={log.id} style={styles.logCard}>
+                  <TouchableOpacity
+                    key={log.id}
+                    style={styles.logCard}
+                    onPress={() => handleOpenDetails(log)}
+                    activeOpacity={0.7}
+                  >
                     <View style={styles.logLeft}>
                       <View style={[styles.logIconBox, { backgroundColor: isCheckin ? "rgba(0, 106, 97, 0.08)" : "rgba(186, 26, 26, 0.08)" }]}>
                         <MaterialIcons
@@ -150,7 +386,7 @@ export default function GuardLogs() {
                         })}
                       </Text>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 );
               })
             ) : (
@@ -162,6 +398,177 @@ export default function GuardLogs() {
           </View>
         )}
       </ScrollView>
+
+      {/* Detailed Log Modal */}
+      <Modal
+        visible={detailsModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setDetailsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Visitor Details</Text>
+              <TouchableOpacity onPress={() => setDetailsModalVisible(false)}>
+                <MaterialIcons name="close" size={24} color={theme.colors.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailsScroll}>
+              {selectedLog && (
+                <>
+                  {/* Visitor Info Card */}
+                  <View style={styles.detailCard}>
+                    <Text style={styles.cardHeader}>VISITOR INFO</Text>
+                    <View style={styles.detailRow}>
+                      <MaterialIcons name="person" size={20} color={theme.colors.secondary} />
+                      <View style={styles.detailTextCol}>
+                        <Text style={styles.detailLabel}>Name</Text>
+                        <Text style={styles.detailValue}>{selectedLog.requestpasses?.visitor_name}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.detailRow}>
+                      <MaterialIcons name="phone" size={20} color={theme.colors.secondary} />
+                      <View style={styles.detailTextCol}>
+                        <Text style={styles.detailLabel}>Phone Number</Text>
+                        <Text style={styles.detailValue}>{selectedLog.requestpasses?.phone_number}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.detailRow}>
+                      <MaterialIcons name="email" size={20} color={theme.colors.secondary} />
+                      <View style={styles.detailTextCol}>
+                        <Text style={styles.detailLabel}>Email</Text>
+                        <Text style={styles.detailValue}>{selectedLog.requestpasses?.visitor_email || "N/A"}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.detailRow}>
+                      <MaterialIcons name="label" size={20} color={theme.colors.secondary} />
+                      <View style={styles.detailTextCol}>
+                        <Text style={styles.detailLabel}>Role / Purpose</Text>
+                        <Text style={styles.detailValue}>{selectedLog.requestpasses?.designation}</Text>
+                      </View>
+                    </View>
+
+                    {(selectedLog.requestpasses?.resident_details?.vehicleNumber || selectedLog.requestpasses?.resident_details?.vehicleNo) && (
+                      <View style={styles.detailRow}>
+                        <MaterialIcons name="directions-car" size={20} color={theme.colors.secondary} />
+                        <View style={styles.detailTextCol}>
+                          <Text style={styles.detailLabel}>Vehicle Number</Text>
+                          <Text style={styles.detailValue}>
+                            {selectedLog.requestpasses?.resident_details?.vehicleNumber || selectedLog.requestpasses?.resident_details?.vehicleNo}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+
+                    <View style={styles.detailRow}>
+                      <MaterialIcons name="meeting-room" size={20} color={theme.colors.secondary} />
+                      <View style={styles.detailTextCol}>
+                        <Text style={styles.detailLabel}>Destination Unit</Text>
+                        <Text style={styles.detailValue}>
+                          Tower {selectedLog.requestpasses?.tower_no}, Flat {selectedLog.requestpasses?.flat_no}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Status & History Card */}
+                  <View style={styles.detailCard}>
+                    <Text style={styles.cardHeader}>STATUS & LOGS</Text>
+
+                    {loadingDetails ? (
+                      <ActivityIndicator size="small" color={theme.colors.secondary} style={{ padding: 12 }} />
+                    ) : (
+                      (() => {
+                        const checkoutLog = passLogs.find((l) => l.action_type === "Check-out");
+                        const checkinLog = passLogs.find((l) => l.action_type === "Check-in") || selectedLog;
+                        const isExited = !!checkoutLog;
+
+                        return (
+                          <View style={{ gap: 12 }}>
+                            {/* Present/Exited status badge */}
+                            <View style={[styles.statusBadge, isExited ? styles.exitedBadge : styles.presentBadge]}>
+                              <MaterialIcons 
+                                name={isExited ? "exit-to-app" : "run-circle"} 
+                                size={16} 
+                                color={isExited ? theme.colors.outline : "#006a61"} 
+                              />
+                              <Text style={[styles.statusBadgeText, isExited ? styles.exitedBadgeText : styles.presentBadgeText]}>
+                                {isExited ? "Exited (Checked Out)" : "Present (Inside)"}
+                              </Text>
+                            </View>
+
+                            {/* Check in time */}
+                            <View style={styles.timelineRow}>
+                              <View style={styles.timelinePointSuccess} />
+                              <View style={styles.timelineContent}>
+                                <Text style={styles.timelineTitle}>Checked In</Text>
+                                <Text style={styles.timelineTime}>
+                                  {new Date(checkinLog.created_at).toLocaleDateString()} at{" "}
+                                  {new Date(checkinLog.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </Text>
+                                <Text style={styles.timelineGate}>Gate: {checkinLog.gate_name || "Main Gate"}</Text>
+                              </View>
+                            </View>
+
+                            {/* Check out time (if exited) */}
+                            {isExited && (
+                              <View style={styles.timelineRow}>
+                                <View style={styles.timelinePointDefault} />
+                                <View style={styles.timelineContent}>
+                                  <Text style={styles.timelineTitle}>Checked Out</Text>
+                                  <Text style={styles.timelineTime}>
+                                    {new Date(checkoutLog.created_at).toLocaleDateString()} at{" "}
+                                    {new Date(checkoutLog.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </Text>
+                                  <Text style={styles.timelineGate}>Gate: {checkoutLog.gate_name || "Main Gate"}</Text>
+                                </View>
+                              </View>
+                            )}
+
+                            {/* Log Checkout button (if present) */}
+                            {!isExited && (
+                              <TouchableOpacity
+                                style={[styles.checkoutBtn, checkoutProcessing && { opacity: 0.7 }]}
+                                onPress={handleLogCheckout}
+                                disabled={checkoutProcessing}
+                                activeOpacity={0.8}
+                              >
+                                {checkoutProcessing ? (
+                                  <ActivityIndicator size="small" color="#ffffff" />
+                                ) : (
+                                  <>
+                                    <MaterialIcons name="logout" size={18} color="#ffffff" />
+                                    <Text style={styles.checkoutBtnText}>Log Check-out / Exit</Text>
+                                  </>
+                                )}
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        );
+                      })()
+                    )}
+                  </View>
+                </>
+              )}
+            </ScrollView>
+
+            <View style={styles.detailsModalActions}>
+              <TouchableOpacity
+                style={styles.closeBtn}
+                onPress={() => setDetailsModalVisible(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.closeBtnText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -300,5 +707,167 @@ const styles = StyleSheet.create({
   emptyText: {
     ...theme.typography.bodyMd,
     color: theme.colors.outline,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: theme.colors.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: "85%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.outlineVariant,
+  },
+  modalTitle: {
+    ...theme.typography.headlineMd,
+    fontWeight: "700",
+    color: theme.colors.primary,
+  },
+  detailsScroll: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  detailCard: {
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+  },
+  cardHeader: {
+    ...theme.typography.labelMd,
+    fontWeight: "700",
+    color: theme.colors.outline,
+    letterSpacing: 0.5,
+    marginBottom: 12,
+  },
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+  },
+  detailTextCol: {
+    flex: 1,
+  },
+  detailLabel: {
+    ...theme.typography.labelMd,
+    color: theme.colors.outline,
+    fontSize: 10,
+    textTransform: "uppercase",
+  },
+  detailValue: {
+    ...theme.typography.bodyLg,
+    color: theme.colors.primary,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+    marginBottom: 8,
+  },
+  presentBadge: {
+    backgroundColor: "rgba(0, 106, 97, 0.08)",
+  },
+  presentBadgeText: {
+    color: "#006a61",
+    fontWeight: "700",
+  },
+  exitedBadge: {
+    backgroundColor: theme.colors.surfaceContainerHigh,
+  },
+  exitedBadgeText: {
+    color: theme.colors.outline,
+    fontWeight: "700",
+  },
+  statusBadgeText: {
+    ...theme.typography.labelMd,
+  },
+  timelineRow: {
+    flexDirection: "row",
+    gap: 12,
+    paddingLeft: 4,
+  },
+  timelinePointSuccess: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: theme.colors.secondary,
+    marginTop: 6,
+  },
+  timelinePointDefault: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: theme.colors.outline,
+    marginTop: 6,
+  },
+  timelineContent: {
+    flex: 1,
+  },
+  timelineTitle: {
+    ...theme.typography.bodyMd,
+    fontWeight: "700",
+    color: theme.colors.primary,
+  },
+  timelineTime: {
+    ...theme.typography.labelMd,
+    color: theme.colors.onSurfaceVariant,
+    marginTop: 2,
+  },
+  timelineGate: {
+    ...theme.typography.labelMd,
+    color: theme.colors.outline,
+    fontSize: 11,
+    marginTop: 1,
+  },
+  checkoutBtn: {
+    height: 44,
+    backgroundColor: theme.colors.error,
+    borderRadius: 8,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+  },
+  checkoutBtnText: {
+    ...theme.typography.button,
+    color: "#ffffff",
+    fontWeight: "700",
+  },
+  detailsModalActions: {
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surfaceContainerLowest,
+  },
+  closeBtn: {
+    height: 48,
+    backgroundColor: theme.colors.surfaceContainerHigh,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  closeBtnText: {
+    ...theme.typography.button,
+    color: theme.colors.primary,
+    fontWeight: "700",
   },
 });

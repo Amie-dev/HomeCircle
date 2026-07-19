@@ -116,7 +116,7 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
         if (data) {
           setSocietyData(data);
           setSocietyError(null);
-          console.log({ societyData });
+          // console.log({ societyData });
         } else {
           setSocietyData(null);
           setSocietyError("Invalid society name or unique ID code.");
@@ -156,8 +156,8 @@ export const PassRequestForm: React.FC<PassRequestFormProps> = ({
        
 
      
-        console.log({ data });
-        console.log({ error });
+        // console.log({ data });
+        // console.log({ error });
         if (error) throw error;
 
         if (!data) {

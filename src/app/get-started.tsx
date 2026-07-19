@@ -79,15 +79,28 @@ const fetchAndSaveToken = async () => {
 
     // Link token with current user
     if (profile?.id) {
-      const { error } = await supabase
+      // 1. Update in users table if exists
+      const { error: userError } = await supabase
+        .from("users")
+        .update({
+          notification_token: expoPushToken,
+        })
+        .eq("id", profile.id);
+
+      if (userError) {
+        console.warn("Could not update token in users table (might be a guest):", userError.message);
+      }
+
+      // 2. Update in guestusers table
+      const { error: guestError } = await supabase
         .from("guestusers")
         .update({
           notification_token: expoPushToken,
         })
         .eq("id", profile.id);
 
-      if (error) {
-        console.error(error);
+      if (guestError) {
+        console.warn("Could not update token in guestusers table (might not exist yet):", guestError.message);
       }
     }
   } catch (error) {

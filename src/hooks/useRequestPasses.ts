@@ -39,13 +39,13 @@ export function usePassesHistory(
   towerName?: string,
   flatName?: string
 ) {
-  console.log("DEBUG [usePassesHistory] Params passed:", { userId, role, societyId, towerId, towerName, flatName });
+  // console.log("DEBUG [usePassesHistory] Params passed:", { userId, role, societyId, towerId, towerName, flatName });
 
   return useQuery<VisitorPass[]>({
     queryKey: ['passesHistory', userId, role, societyId, towerId, towerName, flatName],
     queryFn: async () => {
       if (!userId) {
-        console.log("DEBUG [usePassesHistory] No userId provided, returning empty list.");
+        // console.log("DEBUG [usePassesHistory] No userId provided, returning empty list.");
         return [];
       }
       
@@ -53,14 +53,14 @@ export function usePassesHistory(
       
       if (role === 'Resident' && societyId) {
         if (societyId !== "mock-soc-1") {
-          console.log(`DEBUG [usePassesHistory] Querying passes for society ID: ${societyId}`);
+          // console.log(`DEBUG [usePassesHistory] Querying passes for society ID: ${societyId}`);
           query = query.eq('resident_details->>societyId', societyId);
         } else {
-          console.log("DEBUG [usePassesHistory] Mock mode (mock-soc-1) detected. Querying ALL passes from database.");
+          // console.log("DEBUG [usePassesHistory] Mock mode (mock-soc-1) detected. Querying ALL passes from database.");
         }
       } else {
-        console.log(`DEBUG [usePassesHistory] Querying passes created by user ID: ${userId}`);
-        query = query.eq('user_id', userId);
+        // console.log(`DEBUG [usePassesHistory] Querying passes created by user ID: ${userId}`);
+        // query = query.eq('user_id', userId);
       }
 
       const { data, error } = await query.order('created_at', { ascending: false });
@@ -70,13 +70,13 @@ export function usePassesHistory(
         throw new Error(error.message || 'Failed to fetch visitor passes history');
       }
 
-      console.log(`DEBUG [usePassesHistory] Supabase returned ${data?.length || 0} passes.`);
+      // console.log(`DEBUG [usePassesHistory] Supabase returned ${data?.length || 0} passes.`);
 
       if (role === 'Resident' && societyId && flatName) {
-        console.log("DEBUG [usePassesHistory] Filtering passes in-memory for Resident...");
+        // console.log("DEBUG [usePassesHistory] Filtering passes in-memory for Resident...");
         const filtered = (data || []).filter(pass => {
           if (societyId === "mock-soc-1") {
-            console.log(`DEBUG [usePassesHistory] Mock mode bypass. Including pass ${pass.id} (Visitor: ${pass.visitor_name})`);
+            // console.log(`DEBUG [usePassesHistory] Mock mode bypass. Including pass ${pass.id} (Visitor: ${pass.visitor_name})`);
             return true; 
           }
           
@@ -91,19 +91,19 @@ export function usePassesHistory(
           
           const keep = matchesUser || (matchTower && matchFlat);
           if (!keep) {
-            console.log(`DEBUG [usePassesHistory] Filtered out pass ${pass.id}. Matches:`, {
-              matchesUser,
-              matchTower,
-              matchFlat,
-              passTower,
-              passFlat: pass.flat_no
-            });
+            // console.log(`DEBUG [usePassesHistory] Filtered out pass ${pass.id}. Matches:`, {
+            //   matchesUser,
+            //   matchTower,
+            //   matchFlat,
+            //   passTower,
+            //   passFlat: pass.flat_no
+            // });
           } else {
-            console.log(`DEBUG [usePassesHistory] Keeping pass ${pass.id} (Visitor: ${pass.visitor_name})`);
+            // console.log(`DEBUG [usePassesHistory] Keeping pass ${pass.id} (Visitor: ${pass.visitor_name})`);
           }
           return keep;
         });
-        console.log(`DEBUG [usePassesHistory] Returning ${filtered.length} passes after filter.`);
+        // console.log(`DEBUG [usePassesHistory] Returning ${filtered.length} passes after filter.`);
         return filtered as VisitorPass[];
       }
 
@@ -136,43 +136,109 @@ export function useCreatePass() {
       }
 
       // If it's a guest request (Pending), notify the flat admin/resident
-      if (passData.status === "Pending" && flatId) {
+      if (passData.status === "Pending") {
         try {
-          const { data: flatData } = await supabase
-            .from("flats")
-            .select("flat_admin_id")
-            .eq("id", flatId)
-            .maybeSingle();
+          let resolvedFlatId = flatId;
+          const societyId = passData.resident_details?.societyId;
 
-          if (flatData?.flat_admin_id) {
-            const { data: userData } = await supabase
-              .from("users")
-              .select("notification_token")
-              .eq("id", flatData.flat_admin_id)
+          // If flatId is not provided, search using societyId, tower_no, and flat_no
+          if (!resolvedFlatId && societyId && passData.tower_no && passData.flat_no) {
+            const { data: towersData } = await supabase
+              .from("towers")
+              .select("id, name, tower_id")
+              .eq("society_id", societyId);
+
+            if (towersData) {
+              const matchedTower = towersData.find(
+                (t) =>
+                  t.name?.toLowerCase() === passData.tower_no?.toLowerCase() ||
+                  t.tower_id?.toLowerCase() === passData.tower_no?.toLowerCase() ||
+                  t.name?.toLowerCase().includes(passData.tower_no?.toLowerCase())
+              );
+
+              if (matchedTower) {
+                const { data: flatData } = await supabase
+                  .from("flats")
+                  .select("id")
+                  .eq("tower_id", matchedTower.id)
+                  .eq("flat_number", passData.flat_no)
+                  .maybeSingle();
+
+                if (flatData) {
+                  resolvedFlatId = flatData.id;
+                }
+              }
+            }
+          }
+
+          if (resolvedFlatId) {
+            // Find flat details to get flat_admin_id
+            const { data: flatData } = await supabase
+              .from("flats")
+              .select("flat_admin_id")
+              .eq("id", resolvedFlatId)
               .maybeSingle();
 
-            const notifTitle = "Visitor Approval Request 🔔";
-            const notifBody = `${passData.visitor_name} is requesting access to your flat.`;
+            let targetUserId = flatData?.flat_admin_id;
 
-            if (userData?.notification_token) {
-              await sendPushNotification({
-                token: userData.notification_token,
-                title: notifTitle,
-                body: notifBody,
-                data: {
-                  screen: "/resident/visitors",
-                  url: "/resident/visitors",
-                },
-              });
+            // If flat_admin_id is not set, fallback to finding any resident user of that flat in societymembers
+            if (!targetUserId) {
+              const { data: memberData } = await supabase
+                .from("societymembers")
+                .select("user_id")
+                .eq("flat_id", resolvedFlatId)
+                .maybeSingle();
+
+              if (memberData) {
+                targetUserId = memberData.user_id;
+              }
             }
 
-            await supabase.from("push_notifications").insert({
-              user_id: flatData.flat_admin_id,
-              title: notifTitle,
-              body: notifBody,
-              screen: "/resident/visitors",
-              status: "Sent",
-            });
+            if (targetUserId) {
+              const { data: userData } = await supabase
+                .from("users")
+                .select("notification_token")
+                .eq("id", targetUserId)
+                .maybeSingle();
+
+              let token = userData?.notification_token;
+
+              // Fallback to guestusers if token is empty
+              if (!token) {
+                const { data: guestData } = await supabase
+                  .from("guestusers")
+                  .select("notification_token")
+                  .eq("id", targetUserId)
+                  .maybeSingle();
+
+                if (guestData) {
+                  token = guestData.notification_token;
+                }
+              }
+
+              const notifTitle = "Visitor Approval Request 🔔";
+              const notifBody = `${passData.visitor_name} is requesting access to your flat.`;
+
+              if (token) {
+                await sendPushNotification({
+                  token: token,
+                  title: notifTitle,
+                  body: notifBody,
+                  data: {
+                    screen: "/resident/visitors",
+                    url: "/resident/visitors",
+                  },
+                });
+              }
+
+              await supabase.from("push_notifications").insert({
+                user_id: targetUserId,
+                title: notifTitle,
+                body: notifBody,
+                screen: "/resident/visitors",
+                status: "Sent",
+              });
+            }
           }
         } catch (notifErr) {
           console.warn("Failed to notify resident of guest pass request in hook:", notifErr);

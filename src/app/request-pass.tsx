@@ -12,7 +12,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { supabase } from "../../utils/supabase";
 import {
   useCreatePass,
   usePassesHistory,
@@ -23,7 +22,6 @@ import { useProfileStore } from "../store/useProfileStore";
 import { theme } from "../theme";
 
 // Extracted Modular Components
-import { sendPushNotification } from "../../utils/notificationService";
 import { PassHistoryList } from "../components/request-pass/PassHistoryList";
 import { PassRequestForm } from "../components/request-pass/PassRequestForm";
 import { ProfileCard } from "../components/request-pass/ProfileCard";
@@ -145,6 +143,7 @@ export default function RequestPassScreen() {
       },
       {
         onSuccess: (newPass) => {
+
           Alert.alert(
             initialStatus === "Approved"
               ? "Pass Approved"
