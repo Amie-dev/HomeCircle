@@ -1,6 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 
+export interface Amenity {
+  id: string;
+  society_id: string;
+  name: string;
+  description?: string;
+  opening_time: string;
+  closing_time: string;
+  max_capacity: number;
+  booking_enabled: boolean;
+  created_at: string;
+}
+
 export interface AmenityBooking {
   id: string;
   user_id: string;
@@ -60,5 +72,27 @@ export function useCreateBooking() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['amenityBookings', data.user_id] });
     },
+  });
+}
+
+// 3. Fetch all amenities for a society
+export function useAmenities(societyId: string | undefined) {
+  return useQuery<Amenity[]>({
+    queryKey: ['amenities', societyId],
+    queryFn: async () => {
+      if (!societyId) return [];
+
+      const { data, error } = await supabase
+        .from('amenities')
+        .select('*')
+        .eq('society_id', societyId);
+
+      if (error) {
+        throw new Error(error.message || 'Failed to fetch amenities');
+      }
+
+      return data as Amenity[];
+    },
+    enabled: !!societyId,
   });
 }

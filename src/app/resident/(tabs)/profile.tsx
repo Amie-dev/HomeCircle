@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, Switch, Image, ActivityIndicator } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../../theme";
@@ -23,18 +23,28 @@ export default function ProfileScreen() {
   const [duesAmount, setDuesAmount] = useState(0);
   const [household, setHousehold] = useState<any[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
+  const [isFlatAdmin, setIsFlatAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const fetchProfileData = async () => {
     if (!profile?.id) return;
     try {
       setLoading(true);
-      // 1. Get flat_id to query dues
+      // 1. Get flat_id and flats(flat_admin_id) to query dues
       const { data: memberData } = await supabase
         .from("societymembers")
-        .select("flat_id")
+        .select(`
+          flat_id,
+          flats (
+            flat_admin_id
+          )
+        `)
         .eq("user_id", profile.id)
         .maybeSingle();
+
+      const flatAdminId = (memberData?.flats as any)?.flat_admin_id || profile.id;
+      const isAdmin = flatAdminId === profile.id;
+      setIsFlatAdmin(isAdmin);
 
       if (memberData?.flat_id) {
         const { data: invoices } = await supabase
@@ -49,21 +59,21 @@ export default function ProfileScreen() {
         }
       }
 
-      // 2. Query household members
+      // 2. Query household members for the flat (using flatAdminId)
       const { data: householdData } = await supabase
         .from("household_members")
         .select("*")
-        .eq("user_id", profile.id);
+        .eq("user_id", flatAdminId);
 
       if (householdData) {
         setHousehold(householdData);
       }
 
-      // 3. Query vehicles
+      // 3. Query vehicles for the flat (using flatAdminId)
       const { data: vehiclesData } = await supabase
         .from("vehicles")
         .select("*")
-        .eq("user_id", profile.id);
+        .eq("user_id", flatAdminId);
 
       if (vehiclesData) {
         setVehicles(vehiclesData);
@@ -75,11 +85,13 @@ export default function ProfileScreen() {
     }
   };
 
-  useEffect(() => {
-    if (profile?.id) {
-      fetchProfileData();
-    }
-  }, [profile?.id]);
+  useFocusEffect(
+    useCallback(() => {
+      if (profile?.id) {
+        fetchProfileData();
+      }
+    }, [profile?.id])
+  );
 
   const handleLogout = async () => {
     Alert.alert("Sign Out", "Are you sure you want to log out?", [
@@ -100,60 +112,17 @@ export default function ProfileScreen() {
   };
 
   const handleAddVehicle = () => {
-    Alert.alert("Add Vehicle", "Enter vehicle details:", [
-      {
-        text: "Register Test Car",
-        onPress: async () => {
-          if (!profile?.id) return;
-          try {
-            const testNum = "MH-12-HC-" + Math.floor(1000 + Math.random() * 9000);
-            const { error } = await supabase
-              .from("vehicles")
-              .insert({
-                user_id: profile.id,
-                vehicle_name: "BMW X5",
-                vehicle_number: testNum,
-                vehicle_type: "Four Wheeler",
-              });
-
-            if (error) throw error;
-            Alert.alert("Success", `Vehicle registered: BMW X5 (${testNum})`);
-            fetchProfileData();
-          } catch (err: any) {
-            Alert.alert("Error", err.message || "Failed to register vehicle.");
-          }
-        }
-      },
-      { text: "Cancel", style: "cancel" }
-    ]);
+    router.push({
+      pathname: "/resident/(setting)/add-vehicle",
+      params: { isFlatAdmin: isFlatAdmin ? "true" : "false" },
+    } as any);
   };
 
   const handleAddHousehold = () => {
-    Alert.alert("Add Member", "Register household family member:", [
-      {
-        text: "Add Test Family Member",
-        onPress: async () => {
-          if (!profile?.id) return;
-          try {
-            const { error } = await supabase
-              .from("household_members")
-              .insert({
-                user_id: profile.id,
-                full_name: "Priya Sharma",
-                phone: "+91 99998 88887",
-                relationship: "Spouse",
-              });
-
-            if (error) throw error;
-            Alert.alert("Success", "Registered प्रिया शर्मा as Spouse");
-            fetchProfileData();
-          } catch (err: any) {
-            Alert.alert("Error", err.message || "Failed to add member.");
-          }
-        }
-      },
-      { text: "Cancel", style: "cancel" }
-    ]);
+    router.push({
+      pathname: "/resident/(setting)/household-members",
+      params: { isFlatAdmin: isFlatAdmin ? "true" : "false" },
+    } as any);
   };
 
   const handleChangePassword = () => {
@@ -254,7 +223,7 @@ export default function ProfileScreen() {
                 <Text style={styles.unitRowTitle}>Household Members ({household.length})</Text>
               </View>
               <TouchableOpacity onPress={handleAddHousehold}>
-                <Text style={styles.actionBtnText}>Add</Text>
+                <Text style={styles.actionBtnText}>Manage</Text>
               </TouchableOpacity>
             </View>
             
@@ -286,7 +255,7 @@ export default function ProfileScreen() {
                 <Text style={styles.unitRowTitle}>Registered Vehicles ({vehicles.length})</Text>
               </View>
               <TouchableOpacity onPress={handleAddVehicle}>
-                <Text style={styles.actionBtnText}>Add</Text>
+                <Text style={styles.actionBtnText}>Manage</Text>
               </TouchableOpacity>
             </View>
 

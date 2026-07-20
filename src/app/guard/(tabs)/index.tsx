@@ -62,11 +62,12 @@ export default function GuardScanner() {
           .from("guard_assignments")
           .select("gate_name")
           .eq("guard_id", profile.id)
-          .maybeSingle();
+          .order("created_at", { ascending: false })
+          .limit(1);
 
         if (error) throw error;
-        if (data?.gate_name) {
-          setGateName(data.gate_name);
+        if (data && data.length > 0 && data[0]?.gate_name) {
+          setGateName(data[0].gate_name);
         }
       } catch (err: any) {
         console.error("Error fetching guard assignment gate name:", err.message);

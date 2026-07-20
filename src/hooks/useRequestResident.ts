@@ -173,11 +173,14 @@ export function useUpdateResidentVerification() {
               flat_id: data.flat_id || null,
             }, { onConflict: "user_id,society_id" });
 
-          // 2. Set them as flat_admin_id for their flat
+          // 2. Set them as flat_admin_id for their flat and mark status as Occupied
           if (data.flat_id) {
             await supabase
               .from("flats")
-              .update({ flat_admin_id: userId })
+              .update({
+                flat_admin_id: userId,
+                status: "Occupied",
+              })
               .eq("id", data.flat_id);
           }
         } catch (smErr) {

@@ -88,19 +88,19 @@ export default function VisitorsScreen() {
 
   // Subscribe to realtime updates for requestpasses table
   useEffect(() => {
-    if (!profile?.flatName) return;
+    if (!profile?.id) return;
 
     const channel = supabase
-      .channel("realtime-visitor-passes")
+      .channel(`realtime-visitor-passes-${profile.id}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "requestpasses",
-          filter: `flat_no=eq.${profile.flatName}`,
         },
-        () => {
+        (payload) => {
+          console.log("DEBUG Realtime visitor pass change received:", payload.eventType);
           queryClient.invalidateQueries({ queryKey: ["passesHistory"] });
         },
       )
@@ -109,7 +109,7 @@ export default function VisitorsScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profile?.flatName]);
+  }, [profile?.id]);
 
   // Auto-refresh when screen comes into focus
   useFocusEffect(

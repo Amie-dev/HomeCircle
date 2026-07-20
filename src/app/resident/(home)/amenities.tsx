@@ -1,27 +1,97 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, Alert, Image, ActivityIndicator } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { MaterialIcons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { theme } from "../../../theme";
 import { useProfileStore } from "../../../store/useProfileStore";
-import { useAmenityBookings, useCreateBooking } from "../../../hooks/useAmenityBookings";
+import { useAmenityBookings, useCreateBooking, useAmenities } from "../../../hooks/useAmenityBookings";
+import { supabase } from "../../../../utils/supabase";
 
 export default function AmenityBookingScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { profile } = useProfileStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [seeding, setSeeding] = useState(false);
 
   // Fetch bookings list for the respective resident
   const { data: bookingsList = [], isLoading } = useAmenityBookings(profile?.id);
+  const { data: dbAmenities = [], isLoading: isLoadingAmenities } = useAmenities(profile?.societyId);
   const createBookingMutation = useCreateBooking();
+
+  // Auto-seed database with default amenities if none exist
+  useEffect(() => {
+    const seedAmenities = async () => {
+      if (!profile?.societyId || isLoadingAmenities || dbAmenities.length > 0 || seeding) return;
+      
+      setSeeding(true);
+      try {
+        console.log("DEBUG: Database amenities list is empty. Auto-seeding default amenities into Supabase...");
+        const seedData = [
+          {
+            society_id: profile.societyId,
+            name: "Badminton Court 1",
+            description: "Clubhouse, Level 2",
+            opening_time: "06:00:00",
+            closing_time: "22:00:00",
+            max_capacity: 4,
+            booking_enabled: true
+          },
+          {
+            society_id: profile.societyId,
+            name: "Infinity Pool",
+            description: "Terrace Hub, Level 5",
+            opening_time: "06:00:00",
+            closing_time: "20:00:00",
+            max_capacity: 15,
+            booking_enabled: false
+          },
+          {
+            society_id: profile.societyId,
+            name: "Community Hall",
+            description: "South Wing, Ground Floor",
+            opening_time: "09:00:00",
+            closing_time: "23:00:00",
+            max_capacity: 150,
+            booking_enabled: true
+          },
+          {
+            society_id: profile.societyId,
+            name: "High-Performance Gym",
+            description: "Clubhouse, Level 1",
+            opening_time: "05:00:00",
+            closing_time: "22:00:00",
+            max_capacity: 25,
+            booking_enabled: true
+          }
+        ];
+
+        const { error } = await supabase.from("amenities").insert(seedData);
+        if (error) {
+          console.warn("Seeding amenities failed:", error.message);
+        } else {
+          console.log("Seeding successful. Invaliding query key to refresh list from DB.");
+          queryClient.invalidateQueries({ queryKey: ["amenities", profile.societyId] });
+        }
+      } catch (err) {
+        console.error("Error auto-seeding amenities:", err);
+      } finally {
+        setSeeding(false);
+      }
+    };
+
+    seedAmenities();
+  }, [profile?.societyId, dbAmenities.length, isLoadingAmenities]);
 
   const categories = ["All", "Sports", "Leisure", "Wellness", "Events"];
 
   const amenitiesData = [
     {
-      id: 1,
+      id: "1",
       title: "Badminton Court 1",
       category: "Sports",
       rating: "4.8",
@@ -30,7 +100,7 @@ export default function AmenityBookingScreen() {
       image: "https://lh3.googleusercontent.com/aida-public/AB6AXuBNBTlyZufV2PSP544pUl4t_eyxGZRCX06P1WhFmFAtpmI136l8NWLo5qBJJtlj9k3tVJ5GT0Xobf3gNTHUvZ9bT6xJAXwaC--fsTz1VVzON3uWUqrNp8pVusaCNyg_3ofLTc8ptbf5slLMxmnBYOu7-fcyGmey-ruNI3sQL9PbnMm0c9tUw0ApGgaprE_EXLTxU53VYUlgmQ77-USepeK6uO1aQo-SZFky10djFL1WvbqzwkKeFXu36w",
     },
     {
-      id: 2,
+      id: "2",
       title: "Infinity Pool",
       category: "Leisure",
       rating: "4.9",
@@ -39,7 +109,7 @@ export default function AmenityBookingScreen() {
       image: "https://lh3.googleusercontent.com/aida-public/AB6AXuDns_XlCAtNQm0RhEVC2VkqGMoL9y3yGqEsT9XkaEAZh8SA1dOP-tH7WJ4MEf4A1MriZvCdhUnQ-Xwc6Xc0R4HYzwMXxs5_PSYp5E22yrVYsPLEn1vrO4GTnYJ60Pfq7b9ITd1s2nsl7lRV46G5XALzy2L_W4bZtMElAzxXFPqZH5cZHEpiz5dTylUZ9T8fDSI92DuP4ag0kA7aBNBSMnz_k-uSEGz8rYv7Nkcz6OUsCIGTzxvL8RZhnQ",
     },
     {
-      id: 3,
+      id: "3",
       title: "Community Hall",
       category: "Events",
       rating: "4.6",
@@ -48,7 +118,7 @@ export default function AmenityBookingScreen() {
       image: "https://lh3.googleusercontent.com/aida-public/AB6AXuDgLK2YM9Up73pQVCxgLYHclzmFZaMXB6Fq9kkRUf9fo0lUg-Di_FIoRHeCz48dFiYcM8VLIuJepeIACMqzXKr1vRqd8pQBq2iG3bEOVTqD9kZyPBof--U_8_utzBJJGEWaEq_tzNeuondS_d6fdQXZ-xzVVh-uBWPudoSPZfMnBrsvzROod2sN7wzW-nnSgrh5XVvGSenIMmVCGTB97iHDzVf2lzIG3DWOcYiZIuTyvNigYl7dQgs4ng",
     },
     {
-      id: 4,
+      id: "4",
       title: "High-Performance Gym",
       category: "Wellness",
       rating: "4.7",
@@ -57,6 +127,23 @@ export default function AmenityBookingScreen() {
       image: "https://lh3.googleusercontent.com/aida-public/AB6AXuCS0iqJaGhRdXnMQECzb5Kzm1DqSPUfp38EAYzbWfARzmWCAoVEoUqb81P1cKfE6NaR_izcrwgZA2dabvsNaIeGyLc8S-aTEjKLFh7B4Arc8RctBX3xn6rWxzeJ-nrmlPoEZ4assCsHBwGbO_jJFxOXCDyCrQIhlIsqMzF2RyE31zoo46HI2rws2f8ubdlHT5K_dh5MtQDIpksqhKUfFa4ssV5MbJObJJkbB_AOvTVApE0HOJzWbhF7sA",
     }
   ];
+
+  const amenitiesList = dbAmenities.length > 0
+    ? dbAmenities.map((item) => {
+        const match = amenitiesData.find(
+          (m) => m.title.toLowerCase().trim() === item.name.toLowerCase().trim()
+        );
+        return {
+          id: item.id,
+          title: item.name,
+          category: match?.category || "Leisure",
+          rating: match?.rating || "4.5",
+          location: item.description || match?.location || "Society Clubhouse",
+          status: item.booking_enabled ? "Available" : "Fully Booked",
+          image: match?.image || "https://lh3.googleusercontent.com/aida-public/AB6AXuDgLK2YM9Up73pQVCxgLYHclzmFZaMXB6Fq9kkRUf9fo0lUg-Di_FIoRHeCz48dFiYcM8VLIuJepeIACMqzXKr1vRqd8pQBq2iG3bEOVTqD9kZyPBof--U_8_utzBJJGEWaEq_tzNeuondS_d6fdQXZ-xzVVh-uBWPudoSPZfMnBrsvzROod2sN7wzW-nnSgrh5XVvGSenIMmVCGTB97iHDzVf2lzIG3DWOcYiZIuTyvNigYl7dQgs4ng",
+        };
+      })
+    : amenitiesData;
 
   const handleBookNow = (title: string) => {
     if (!profile) return;
@@ -97,14 +184,14 @@ export default function AmenityBookingScreen() {
     }
   };
 
-  const filteredAmenities = amenitiesData.filter((item) => {
+  const filteredAmenities = amenitiesList.filter((item) => {
     const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === "All" || item.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
   return (
-    <View style={styles.outerContainer}>
+    <SafeAreaView style={styles.outerContainer} edges={["top"]}>
       <StatusBar style="dark" />
 
       {/* Top App Bar Header */}
@@ -116,14 +203,7 @@ export default function AmenityBookingScreen() {
           <Text style={styles.appBarTitle}>Book Amenity</Text>
         </View>
         <TouchableOpacity style={styles.historyBtn} onPress={() => {
-          if (bookingsList.length === 0) {
-            Alert.alert("Booking History", "No amenity bookings found.");
-            return;
-          }
-          const historyText = bookingsList.map((b, idx) => 
-            `${idx + 1}. ${b.amenity_name}\nDate: ${b.booking_date} (${b.start_time} - ${b.end_time})\nStatus: ${b.status}`
-          ).join("\n\n");
-          Alert.alert("Your Amenity Bookings", historyText);
+          router.push("/resident/(home)/booking-history" as any);
         }}>
           <MaterialIcons name="history" size={24} color={theme.colors.onSurfaceVariant} />
         </TouchableOpacity>
@@ -258,7 +338,7 @@ export default function AmenityBookingScreen() {
       <TouchableOpacity style={styles.fab} onPress={() => router.push("/request-pass" as any)}>
         <MaterialIcons name="qr-code-2" size={28} color={theme.colors.secondary} />
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -268,12 +348,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   topAppBar: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 80,
-    paddingTop: 32,
+    height: 56,
     backgroundColor: theme.colors.surface,
     flexDirection: "row",
     justifyContent: "space-between",
@@ -281,7 +356,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.containerMarginMobile,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(198, 198, 205, 0.2)",
-    zIndex: 50,
   },
   topAppBarLeft: {
     flexDirection: "row",
@@ -301,7 +375,7 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     paddingHorizontal: theme.spacing.containerMarginMobile,
-    paddingTop: 96,
+    paddingTop: theme.spacing.lg,
     paddingBottom: 100,
   },
   searchSection: {
