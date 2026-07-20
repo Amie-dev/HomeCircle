@@ -7,6 +7,7 @@ import { theme } from "../../../theme";
 import { useProfileStore } from "../../../store/useProfileStore";
 import { usePassesHistory } from "../../../hooks/useRequestPasses";
 import { supabase } from "../../../../utils/supabase";
+import VisitorDetailModal from "../../../components/VisitorDetailModal";
 
 export default function ResidentDashboard() {
   const router = useRouter();
@@ -22,6 +23,8 @@ export default function ResidentDashboard() {
   const [duesAmount, setDuesAmount] = useState(0);
   const [noticesCount, setNoticesCount] = useState(0);
   const [guardsCount, setGuardsCount] = useState(0);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<any>(null);
 
   useEffect(() => {
     if (!profile?.id || !profile?.societyId) return;
@@ -97,6 +100,68 @@ export default function ResidentDashboard() {
     router.push("/resident/(home)/dues" as any);
   };
 
+  const handleActivityPress = (activity: any) => {
+    if (!profile) return;
+    try {
+      if (activity.id.startsWith("act-")) {
+        // Mock item fallback details mapping
+        const typeMap: Record<string, any> = {
+          "Zomato Delivery": "Delivery",
+          "Guest: Rahul": "Guest",
+          "Domestic Help": "Daily Help"
+        };
+        setSelectedLog({
+          id: activity.id,
+          name: activity.visitor_name,
+          type: typeMap[activity.visitor_name] || "Guest",
+          status: activity.status === "Approved" ? "Entered" : activity.status,
+          icon: activity.icon,
+          avatar: activity.avatar,
+          vehicleNumber: "MH-12-HC-2024",
+          entryTime: "12:45 PM",
+          time: activity.time.includes(",") ? activity.time.split(",")[1].trim() : "12:45 PM",
+          date: activity.time.includes(",") ? activity.time.split(",")[0].trim() : "Today",
+          residentName: profile.fullName,
+          residentFlat: `${profile.towerName || "Block C"}, Unit ${profile.flatName || "402"}`,
+          unit: `${profile.towerName || "Block C"}, Unit ${profile.flatName || "402"}`,
+          approvedByResident: "Resident Pre-Approved",
+          guardName: "Vikram Singh",
+          guardGate: "Main Gate No. 1",
+        });
+      } else {
+        // Real DB item: Query pass details
+        const pass = activity.rawPass;
+        const typeMap: Record<string, any> = {
+          "Delivery": "Delivery",
+          "Guest": "Guest",
+          "Service": "Daily Help",
+          "Cab": "Cab"
+        };
+        setSelectedLog({
+          id: pass.id,
+          name: pass.visitor_name,
+          type: typeMap[pass.designation] || "Guest",
+          status: pass.status === "Verified" ? "Entered" : pass.status,
+          icon: pass.designation === "Delivery" ? "delivery-dining" : pass.designation === "Service" ? "cleaning-services" : "person",
+          avatar: null,
+          vehicleNumber: pass.vehicle_number || "N/A",
+          entryTime: new Date(pass.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
+          time: new Date(pass.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
+          date: new Date(pass.created_at).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" }),
+          residentName: pass.resident_details?.fullName || profile.fullName,
+          residentFlat: `${pass.resident_details?.towerName || ""}, Unit ${pass.resident_details?.flatName || ""}`,
+          unit: `${pass.resident_details?.towerName || ""}, Unit ${pass.resident_details?.flatName || ""}`,
+          approvedByResident: "Resident Pre-Approved",
+          guardName: pass.verified_by || "Main Gate Guard",
+          guardGate: "Main Security Gate",
+        });
+      }
+      setShowDetailModal(true);
+    } catch (err) {
+      console.warn("Failed to load activity details:", err);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "Approved":
@@ -149,6 +214,7 @@ export default function ResidentDashboard() {
         status: pass.status === "Verified" ? "Entered" : pass.status,
         icon: pass.designation.toLowerCase().includes("delivery") ? "delivery-dining" : pass.designation.toLowerCase().includes("service") ? "cleaning-services" : "person",
         avatar: null,
+        rawPass: pass,
       }))
     : mockRecentActivity;
 
@@ -278,7 +344,12 @@ export default function ResidentDashboard() {
           {activitiesToDisplay.map((item) => {
             const statusStyle = getStatusColor(item.status);
             return (
-              <View key={item.id} style={styles.activityCard}>
+              <TouchableOpacity
+                key={item.id}
+                style={styles.activityCard}
+                onPress={() => handleActivityPress(item)}
+                activeOpacity={0.7}
+              >
                 <View style={styles.activityLeft}>
                   {item.avatar ? (
                     <Image source={{ uri: item.avatar }} style={styles.activityAvatar} />
@@ -295,7 +366,7 @@ export default function ResidentDashboard() {
                 <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
                   <Text style={[styles.statusBadgeText, { color: statusStyle.text }]}>{item.status}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -327,6 +398,18 @@ export default function ResidentDashboard() {
       >
         <MaterialIcons name="add" size={28} color="#ffffff" />
       </TouchableOpacity>
+
+      <VisitorDetailModal
+        visible={showDetailModal}
+        selectedLog={selectedLog}
+        onClose={() => {
+          setShowDetailModal(false);
+          setSelectedLog(null);
+        }}
+        onToggleStatus={() => {
+          Alert.alert("Access Denied", "Only security guards can check-in/out visitors.");
+        }}
+      />
     </View>
   );
 }

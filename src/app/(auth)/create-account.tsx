@@ -65,23 +65,22 @@ export default function CreateAccountScreen() {
           .insert({ token });
 
         if (notificationError && notificationError.code !== "23505") {
-          console.error(
-            "Error saving token to notifications table:",
-            notificationError.message,
-          );
+          console.error("Error saving token to notifications table:", notificationError.message);
         }
       }
 
       // 1b. Insert credentials into custom database users table
-      const { error: dbError } = await supabase.from("users").insert({
-        id: userId,
-        role: role,
-        full_name: fullName,
-        phone: phone,
-        email: email.trim(),
-        password: password,
-        notification_token: token,
-      });
+      const { error: dbError } = await supabase
+        .from("users")
+        .insert({
+          id: userId,
+          role: role,
+          full_name: fullName,
+          phone: phone,
+          email: email.trim(),
+          password: password,
+          notification_token: token
+        });
 
       if (dbError) {
         throw new Error(dbError.message);
@@ -108,11 +107,7 @@ export default function CreateAccountScreen() {
     } catch (err: any) {
       const message = err.message || "Failed to sign up";
       // Fallback for missing backend or networking issues
-      if (
-        message.includes("network") ||
-        message.includes("credentials") ||
-        message.includes("relation")
-      ) {
+      if (message.includes("network") || message.includes("credentials") || message.includes("relation")) {
         Alert.alert(
           "DB Warning",
           "Supabase Auth registration failed. Proceeding with offline mockup state for testing.",
@@ -138,7 +133,7 @@ export default function CreateAccountScreen() {
               },
             },
             { text: "Cancel", style: "cancel" },
-          ],
+          ]
         );
       } else {
         Alert.alert("Signup Error", message);
@@ -157,14 +152,16 @@ export default function CreateAccountScreen() {
       const mockPhone = "9999999999";
 
       // Insert into users table with default Resident role
-      const { error: dbError } = await supabase.from("users").insert({
-        id: userId,
-        role: "Resident",
-        full_name: mockName,
-        phone: mockPhone,
-        email: mockEmail,
-        password: "", // no password for social logins
-      });
+      const { error: dbError } = await supabase
+        .from("users")
+        .insert({
+          id: userId,
+          role: "Resident",
+          full_name: mockName,
+          phone: mockPhone,
+          email: mockEmail,
+          password: "", // no password for social logins
+        });
 
       if (dbError) {
         throw new Error(dbError.message);
@@ -187,7 +184,7 @@ export default function CreateAccountScreen() {
             text: "Continue",
             onPress: () => router.push("/resident-details" as any),
           },
-        ],
+        ]
       );
     } catch (err: any) {
       console.warn(`${provider} signup failed:`, err.message);
@@ -208,34 +205,22 @@ export default function CreateAccountScreen() {
   };
 
   return (
-    <SafeAreaView
-      edges={["top", "bottom", "left", "right"]}
-      style={{ flex: 1 }}
-    >
+    <SafeAreaView edges={["top", "bottom", "left", 'right']} style={{ flex: 1 }}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
-        <ScrollView
-          contentContainerStyle={[styles.container]}
-          keyboardShouldPersistTaps="handled"
-        >
+        <ScrollView contentContainerStyle={[styles.container]} keyboardShouldPersistTaps="handled">
           <StatusBar style="dark" />
 
           {/* Top Branding Anchor */}
           <View style={styles.header}>
             <View style={styles.logoRow}>
-              <MaterialIcons
-                name="home"
-                size={32}
-                color={theme.colors.secondary}
-              />
+              <MaterialIcons name="home" size={32} color={theme.colors.secondary} />
               <Text style={styles.logoText}>HomeCircle</Text>
             </View>
             <Text style={styles.headerTitle}>Create Account</Text>
-            <Text style={styles.headerSubtitle}>
-              Join your digital smart society community today.
-            </Text>
+            <Text style={styles.headerSubtitle}>Join your digital smart society community today.</Text>
           </View>
 
           {/* Role Segmented Selector */}
@@ -247,60 +232,31 @@ export default function CreateAccountScreen() {
                 style={[
                   styles.indicator,
                   {
-                    left:
-                      role === "Resident"
-                        ? 4
-                        : role === "Guard"
-                          ? "34.5%"
-                          : "66%",
+                    left: role === "Resident" ? 4 : role === "Guard" ? "34.5%" : "66%",
                   },
                 ]}
               />
               <TouchableOpacity
-                style={[
-                  styles.segmentBtn,
-                  role === "Resident" && styles.segmentBtnActive,
-                ]}
+                style={[styles.segmentBtn, role === "Resident" && styles.segmentBtnActive]}
                 onPress={() => setRole("Resident")}
               >
-                <Text
-                  style={[
-                    styles.segmentBtnText,
-                    role === "Resident" && styles.segmentBtnTextActive,
-                  ]}
-                >
+                <Text style={[styles.segmentBtnText, role === "Resident" && styles.segmentBtnTextActive]}>
                   Resident
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[
-                  styles.segmentBtn,
-                  role === "Guard" && styles.segmentBtnActive,
-                ]}
+                style={[styles.segmentBtn, role === "Guard" && styles.segmentBtnActive]}
                 onPress={() => setRole("Guard")}
               >
-                <Text
-                  style={[
-                    styles.segmentBtnText,
-                    role === "Guard" && styles.segmentBtnTextActive,
-                  ]}
-                >
+                <Text style={[styles.segmentBtnText, role === "Guard" && styles.segmentBtnTextActive]}>
                   Guard
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[
-                  styles.segmentBtn,
-                  role === "Admin" && styles.segmentBtnActive,
-                ]}
+                style={[styles.segmentBtn, role === "Admin" && styles.segmentBtnActive]}
                 onPress={() => setRole("Admin")}
               >
-                <Text
-                  style={[
-                    styles.segmentBtnText,
-                    role === "Admin" && styles.segmentBtnTextActive,
-                  ]}
-                >
+                <Text style={[styles.segmentBtnText, role === "Admin" && styles.segmentBtnTextActive]}>
                   Admin
                 </Text>
               </TouchableOpacity>
@@ -313,12 +269,7 @@ export default function CreateAccountScreen() {
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>FULL NAME</Text>
               <View style={styles.inputBox}>
-                <MaterialIcons
-                  name="person"
-                  size={20}
-                  color={theme.colors.outline}
-                  style={styles.inputIcon}
-                />
+                <MaterialIcons name="person" size={20} color={theme.colors.outline} style={styles.inputIcon} />
                 <TextInput
                   style={styles.textInput}
                   placeholder="Enter your full name"
@@ -333,12 +284,7 @@ export default function CreateAccountScreen() {
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>PHONE NUMBER</Text>
               <View style={styles.inputBox}>
-                <MaterialIcons
-                  name="phone"
-                  size={20}
-                  color={theme.colors.outline}
-                  style={styles.inputIcon}
-                />
+                <MaterialIcons name="phone" size={20} color={theme.colors.outline} style={styles.inputIcon} />
                 <TextInput
                   style={styles.textInput}
                   placeholder="+1 (555) 000-0000"
@@ -354,12 +300,7 @@ export default function CreateAccountScreen() {
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>EMAIL ADDRESS</Text>
               <View style={styles.inputBox}>
-                <MaterialIcons
-                  name="mail"
-                  size={20}
-                  color={theme.colors.outline}
-                  style={styles.inputIcon}
-                />
+                <MaterialIcons name="mail" size={20} color={theme.colors.outline} style={styles.inputIcon} />
                 <TextInput
                   style={styles.textInput}
                   placeholder="name@example.com"
@@ -376,12 +317,7 @@ export default function CreateAccountScreen() {
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>PASSWORD</Text>
               <View style={styles.inputBox}>
-                <MaterialIcons
-                  name="lock"
-                  size={20}
-                  color={theme.colors.outline}
-                  style={styles.inputIcon}
-                />
+                <MaterialIcons name="lock" size={20} color={theme.colors.outline} style={styles.inputIcon} />
                 <TextInput
                   style={styles.textInput}
                   placeholder="Create password"
@@ -406,11 +342,7 @@ export default function CreateAccountScreen() {
               ) : (
                 <>
                   <Text style={styles.continueButtonText}>Continue</Text>
-                  <MaterialIcons
-                    name="arrow-forward"
-                    size={18}
-                    color="#ffffff"
-                  />
+                  <MaterialIcons name="arrow-forward" size={18} color="#ffffff" />
                 </>
               )}
             </TouchableOpacity>
@@ -425,26 +357,12 @@ export default function CreateAccountScreen() {
 
           {/* Social Register */}
           <View style={styles.socialRow}>
-            <TouchableOpacity
-              style={styles.socialButton}
-              onPress={() => handleSocialSignup("Google")}
-            >
-              <MaterialIcons
-                name="g-mobiledata"
-                size={28}
-                color={theme.colors.primary}
-              />
+            <TouchableOpacity style={styles.socialButton} onPress={() => handleSocialSignup("Google")}>
+              <MaterialIcons name="g-mobiledata" size={28} color={theme.colors.primary} />
               <Text style={styles.socialButtonText}>Google</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.socialButton}
-              onPress={() => handleSocialSignup("Apple")}
-            >
-              <MaterialIcons
-                name="phone-iphone"
-                size={20}
-                color={theme.colors.primary}
-              />
+            <TouchableOpacity style={styles.socialButton} onPress={() => handleSocialSignup("Apple")}>
+              <MaterialIcons name="phone-iphone" size={20} color={theme.colors.primary} />
               <Text style={styles.socialButtonText}>Apple</Text>
             </TouchableOpacity>
           </View>
@@ -453,17 +371,13 @@ export default function CreateAccountScreen() {
           <View style={styles.footer}>
             <Text style={styles.footerText}>
               Already have an account?{" "}
-              <Text
-                style={styles.signInLink}
-                onPress={() => router.push("/login" as any)}
-              >
+              <Text style={styles.signInLink} onPress={() => router.push("/login" as any)}>
                 Sign In
               </Text>
             </Text>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      </KeyboardAvoidingView></SafeAreaView>
   );
 }
 

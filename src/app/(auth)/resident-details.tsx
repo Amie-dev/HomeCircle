@@ -42,7 +42,7 @@ export default function ResidentDetailsScreen() {
   const [validatingFlat, setValidatingFlat] = useState(false);
   const [flatData, setFlatData] = useState<any | null>(null);
   const [flatError, setFlatError] = useState<string | null>(null);
-
+  const [isOccupied, setIsOccupied] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // 1. Debounced Society Check
@@ -135,12 +135,14 @@ export default function ResidentDetailsScreen() {
     if (!towerData || flatQuery.trim().length === 0) {
       setFlatData(null);
       setFlatError(null);
+      setIsOccupied(false);
       return;
     }
 
     const timer = setTimeout(async () => {
       setValidatingFlat(true);
       setFlatError(null);
+      setIsOccupied(false);
       try {
         const { data, error } = await supabase
           .from("flats")
@@ -152,15 +154,24 @@ export default function ResidentDetailsScreen() {
         if (error) throw error;
 
         if (data) {
-          setFlatData(data);
-          setFlatError(null);
+          if (data.status && data.status !== "Vacant") {
+            setIsOccupied(true);
+            setFlatData(null);
+            setFlatError("This flat is already occupied. Choose another flat.");
+          } else {
+            setIsOccupied(false);
+            setFlatData(data);
+            setFlatError(null);
+          }
         } else {
           setFlatData(null);
+          setIsOccupied(false);
           setFlatError("Flat number does not exist in this tower.");
         }
       } catch (err: any) {
         console.warn("Flat lookup failed:", err.message);
         setFlatError("Database validation failed.");
+        setIsOccupied(false);
       } finally {
         setValidatingFlat(false);
       }
@@ -172,6 +183,14 @@ export default function ResidentDetailsScreen() {
   const handleRegisterResident = async () => {
     if (!signupData) {
       Alert.alert("Registration Session Lost", "Please go back and start again.");
+      return;
+    }
+
+    if (isOccupied) {
+      Alert.alert(
+        "Flat Occupied ⚠️",
+        "The selected flat is already occupied. You cannot register as a resident for this unit. Please choose a vacant flat or contact society administrator."
+      );
       return;
     }
 

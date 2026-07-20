@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../../utils/supabase";
 import { useProfileStore } from "../../store/useProfileStore";
 import { theme } from "../../theme";
+import VisitorDetailModal from "../../components/VisitorDetailModal";
 
 
 interface LogEntry {
@@ -561,191 +562,46 @@ export default function VisitorLogScreen() {
       </Modal>
 
       {/* Detail Modal */}
-      <Modal
+      <VisitorDetailModal
         visible={showDetailModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => {
+        selectedLog={selectedLog}
+        onClose={() => {
           setShowDetailModal(false);
           setSelectedLog(null);
         }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Visitor Details</Text>
-              <TouchableOpacity onPress={() => {
-                setShowDetailModal(false);
-                setSelectedLog(null);
-              }}>
-                <MaterialIcons name="close" size={24} color={theme.colors.primary} />
-              </TouchableOpacity>
-            </View>
-
-            {selectedLog && (
-              <ScrollView contentContainerStyle={styles.detailModalBody} showsVerticalScrollIndicator={false}>
-                {/* Guest Profile Section */}
-                <View style={styles.detailProfileSection}>
-                  {selectedLog.avatar ? (
-                    <Image source={{ uri: selectedLog.avatar }} style={styles.detailAvatar} />
-                  ) : (
-                    <View style={[styles.logIconWrapper, { width: 72, height: 72, borderRadius: 36 }]}>
-                      <MaterialIcons
-                        name={selectedLog.icon || "person"}
-                        size={40}
-                        color={theme.colors.outline}
-                      />
-                    </View>
-                  )}
-                  <Text style={styles.detailGuestName}>{selectedLog.name}</Text>
-                  <View style={styles.badgeRow}>
-                    <View style={styles.detailTypeBadge}>
-                      <Text style={styles.detailTypeBadgeText}>{selectedLog.type}</Text>
-                    </View>
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        selectedLog.status === "Entered"
-                          ? styles.statusBadgeEntered
-                          : styles.statusBadgeExited,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.statusBadgeText,
-                          selectedLog.status === "Entered"
-                            ? styles.statusBadgeTextEntered
-                            : styles.statusBadgeTextExited,
-                        ]}
-                      >
-                        {selectedLog.status}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-
-                {/* Info Cards */}
-                <View style={styles.detailSectionCards}>
-                  {/* Guest Info Card */}
-                  <View style={styles.detailCard}>
-                    <View style={styles.detailCardHeader}>
-                      <MaterialIcons name="badge" size={18} color={theme.colors.secondary} />
-                      <Text style={styles.detailCardTitle}>Guest Information</Text>
-                    </View>
-                    <View style={styles.detailCardRow}>
-                      <Text style={styles.detailRowLabel}>Vehicle No:</Text>
-                      <Text style={styles.detailRowValue}>{selectedLog.vehicleNumber || "N/A"}</Text>
-                    </View>
-                    <View style={styles.detailCardRow}>
-                      <Text style={styles.detailRowLabel}>Check-In Time:</Text>
-                      <Text style={styles.detailRowValue}>
-                        {selectedLog.entryTime || selectedLog.time} ({selectedLog.date})
-                      </Text>
-                    </View>
-                    {selectedLog.status === "Exited" && (
-                      <View style={styles.detailCardRow}>
-                        <Text style={styles.detailRowLabel}>Check-Out Time:</Text>
-                        <Text style={styles.detailRowValue}>{selectedLog.time} ({selectedLog.date})</Text>
-                      </View>
-                    )}
-                  </View>
-
-                  {/* Resident Info Card */}
-                  <View style={styles.detailCard}>
-                    <View style={styles.detailCardHeader}>
-                      <MaterialIcons name="home" size={18} color={theme.colors.secondary} />
-                      <Text style={styles.detailCardTitle}>Host (Resident) Details</Text>
-                    </View>
-                    <View style={styles.detailCardRow}>
-                      <Text style={styles.detailRowLabel}>Resident Name:</Text>
-                      <Text style={styles.detailRowValue}>{selectedLog.residentName || "N/A"}</Text>
-                    </View>
-                    <View style={styles.detailCardRow}>
-                      <Text style={styles.detailRowLabel}>Flat No:</Text>
-                      <Text style={styles.detailRowValue}>{selectedLog.residentFlat || selectedLog.unit}</Text>
-                    </View>
-                    <View style={styles.detailCardRow}>
-                      <Text style={styles.detailRowLabel}>Approved By:</Text>
-                      <Text style={[styles.detailRowValue, { color: theme.colors.secondary, fontWeight: "600" }]}>
-                        {selectedLog.approvedByResident || "Resident Pre-Approved"}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Guard Info Card */}
-                  <View style={styles.detailCard}>
-                    <View style={styles.detailCardHeader}>
-                      <MaterialIcons name="security" size={18} color={theme.colors.secondary} />
-                      <Text style={styles.detailCardTitle}>Security Guard Log</Text>
-                    </View>
-                    <View style={styles.detailCardRow}>
-                      <Text style={styles.detailRowLabel}>Verified By Guard:</Text>
-                      <Text style={styles.detailRowValue}>{selectedLog.guardName || "N/A"}</Text>
-                    </View>
-                    <View style={styles.detailCardRow}>
-                      <Text style={styles.detailRowLabel}>Checked Gate:</Text>
-                      <Text style={styles.detailRowValue}>{selectedLog.guardGate || "Main Security Gate"}</Text>
-                    </View>
-                  </View>
-                </View>
-              </ScrollView>
-            )}
-
-            <View style={styles.modalFooter}>
-              {selectedLog && (
-                <TouchableOpacity
-                  style={[styles.submitBtn, { backgroundColor: theme.colors.primary }]}
-                  onPress={() => {
-                    toggleLogStatus(selectedLog.id);
-                    // Update current selected log display
-                    if (selectedLog.status === "Entered") {
-                      const now = new Date();
-                      const formattedTime = now.toLocaleTimeString("en-US", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        hour12: true,
-                      });
-                      setSelectedLog({
-                        ...selectedLog,
-                        status: "Exited",
-                        entryTime: selectedLog.time,
-                        time: formattedTime,
-                      });
-                    } else {
-                      const now = new Date();
-                      const formattedTime = now.toLocaleTimeString("en-US", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        hour12: true,
-                      });
-                      setSelectedLog({
-                        ...selectedLog,
-                        status: "Entered",
-                        time: formattedTime,
-                        entryTime: undefined,
-                      });
-                    }
-                    Alert.alert("Success", `Status toggled successfully.`);
-                  }}
-                >
-                  <Text style={styles.submitBtnText}>
-                    {selectedLog.status === "Entered" ? "Check Out Visitor" : "Check In Visitor"}
-                  </Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => {
-                  setShowDetailModal(false);
-                  setSelectedLog(null);
-                }}
-              >
-                <Text style={styles.cancelBtnText}>Close</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        onToggleStatus={(log) => {
+          toggleLogStatus(log.id);
+          // Update current selected log display
+          if (log.status === "Entered") {
+            const now = new Date();
+            const formattedTime = now.toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+            });
+            setSelectedLog({
+              ...log,
+              status: "Exited",
+              entryTime: log.time,
+              time: formattedTime,
+            });
+          } else {
+            const now = new Date();
+            const formattedTime = now.toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+            });
+            setSelectedLog({
+              ...log,
+              status: "Entered",
+              time: formattedTime,
+              entryTime: undefined,
+            });
+          }
+          Alert.alert("Success", "Status toggled successfully.");
+        }}
+      />
     </View>
   );
 }

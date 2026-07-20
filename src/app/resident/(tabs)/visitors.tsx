@@ -21,14 +21,69 @@ import { supabase } from "../../../../utils/supabase";
 import { usePassesHistory } from "../../../hooks/useRequestPasses";
 import { useProfileStore } from "../../../store/useProfileStore";
 import { theme } from "../../../theme";
+import VisitorDetailModal from "../../../components/VisitorDetailModal";
 
 export default function VisitorsScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { profile } = useProfileStore();
-  const [activeTab, setActiveTab] = useState<"approvals" | "history">(
-    "approvals",
-  );
+  const [activeTab, setActiveTab] = useState<"approvals" | "history">("approvals");
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<any>(null);
+
+  const handleVisitorPress = (item: any) => {
+    const isMock = item.id.startsWith("mock-") || item.id.startsWith("act-") || item.id.startsWith("res-");
+    
+    const typeMap: Record<string, any> = {
+      "Delivery": "Delivery",
+      "Guest": "Guest",
+      "Service": "Daily Help",
+      "Cab": "Cab"
+    };
+
+    if (isMock) {
+      // Mapping mock items
+      setSelectedLog({
+        id: item.id,
+        name: item.visitor_name,
+        type: typeMap[item.designation] || "Guest",
+        status: item.status === "Approved" ? "Entered" : item.status === "Pending" ? "Entered" : item.status,
+        icon: item.designation === "Delivery" ? "delivery-dining" : item.designation === "Service" ? "cleaning-services" : "person",
+        avatar: item.avatar || null,
+        vehicleNumber: "MH-12-HC-2024",
+        entryTime: "12:45 PM",
+        time: "12:45 PM",
+        date: "Today",
+        residentName: profile?.fullName || "Resident",
+        residentFlat: `${profile?.towerName || "Block C"}, Unit ${profile?.flatName || "402"}`,
+        unit: `${profile?.towerName || "Block C"}, Unit ${profile?.flatName || "402"}`,
+        approvedByResident: item.status === "Approved" ? "Resident Pre-Approved" : "Pending Approval",
+        guardName: "Vikram Singh",
+        guardGate: "Main Gate No. 1",
+      });
+    } else {
+      // Mapping real database items (requestpasses format)
+      setSelectedLog({
+        id: item.id,
+        name: item.visitor_name,
+        type: typeMap[item.designation] || "Guest",
+        status: item.status === "Verified" ? "Entered" : item.status === "Approved" ? "Entered" : item.status,
+        icon: item.designation === "Delivery" ? "delivery-dining" : item.designation === "Service" ? "cleaning-services" : "person",
+        avatar: null,
+        vehicleNumber: item.visitor_phone || "N/A",
+        entryTime: new Date(item.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
+        time: new Date(item.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
+        date: new Date(item.created_at).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" }),
+        residentName: item.resident_details?.fullName || profile?.fullName || "Resident",
+        residentFlat: `${profile?.towerName || ""}, Unit ${profile?.flatName || ""}`,
+        unit: `${profile?.towerName || ""}, Unit ${profile?.flatName || ""}`,
+        approvedByResident: item.status === "Verified" ? "Resident Pre-Approved" : item.status === "Approved" ? "Resident Pre-Approved" : "Pending Approval",
+        guardName: item.verified_by || "Main Gate Guard",
+        guardGate: "Main Security Gate",
+      });
+    }
+    setShowDetailModal(true);
+  };
 
   // Spinning animation for the refresh button
   const spinAnim = useRef(new Animated.Value(0)).current;
@@ -70,13 +125,19 @@ export default function VisitorsScreen() {
   });
 
   // Fetch visitor history/live data
-  const { data: historyList = [], isLoading, isFetching } = usePassesHistory(
+  const { data: historyList = [], isLoading, isFetching, refetch } = usePassesHistory(
     profile?.id,
     profile?.role,
     profile?.societyId,
     profile?.towerId,
     profile?.towerName,
     profile?.flatName,
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
   );
 
   console.log(
@@ -423,7 +484,7 @@ export default function VisitorsScreen() {
                 const isMock = item.id.startsWith("mock-");
                 return (
                   <View key={item.id} style={styles.pendingCard}>
-                    <View style={styles.pendingDetailsRow}>
+                    <TouchableOpacity onPress={() => handleVisitorPress(item)} activeOpacity={0.7} style={styles.pendingDetailsRow}>
                       <Image
                         source={{
                           uri:
@@ -456,7 +517,7 @@ export default function VisitorsScreen() {
                           {item.gate || "Main Gate"}
                         </Text>
                       </View>
-                    </View>
+                    </TouchableOpacity>
 
                     <View style={styles.actionButtonRow}>
                       <TouchableOpacity
@@ -533,7 +594,12 @@ export default function VisitorsScreen() {
                 {displayUpcoming.map((item: any) => {
                   const isMock = item.id.startsWith("mock-");
                   return (
-                    <View key={item.id} style={styles.upcomingCard}>
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.upcomingCard}
+                      onPress={() => handleVisitorPress(item)}
+                      activeOpacity={0.7}
+                    >
                       <View style={styles.upcomingLeft}>
                         <View
                           style={[
@@ -577,7 +643,7 @@ export default function VisitorsScreen() {
                             : formatTime(item.expiry_time)}
                         </Text>
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   );
                 })}
               </View>
@@ -698,7 +764,12 @@ export default function VisitorsScreen() {
               historyList.map((item) => {
                 const statusColor = getStatusColor(item.status);
                 return (
-                  <View key={item.id} style={styles.historyCard}>
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.historyCard}
+                    onPress={() => handleVisitorPress(item)}
+                    activeOpacity={0.7}
+                  >
                     <View style={styles.historyLeft}>
                       <View style={styles.historyIconWrapper}>
                         <MaterialIcons
@@ -735,7 +806,7 @@ export default function VisitorsScreen() {
                         {item.status}
                       </Text>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 );
               })
             )}
@@ -750,6 +821,18 @@ export default function VisitorsScreen() {
       >
         <MaterialIcons name="add" size={28} color="#ffffff" />
       </TouchableOpacity>
+
+      <VisitorDetailModal
+        visible={showDetailModal}
+        selectedLog={selectedLog}
+        onClose={() => {
+          setShowDetailModal(false);
+          setSelectedLog(null);
+        }}
+        onToggleStatus={() => {
+          Alert.alert("Access Denied", "Only security guards can check-in/out visitors.");
+        }}
+      />
     </View>
   );
 }

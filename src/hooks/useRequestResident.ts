@@ -18,6 +18,7 @@ export interface ResidentVerification {
     societyName: string;
     towerName: string;
     flatNumber: string;
+    status?: string;
   };
   created_at: string;
   // Joined fields from users
@@ -140,17 +141,32 @@ export function useUpdateResidentVerification() {
       userId,
       isVerified,
       previousStatus,
+      status,
     }: {
       id: string;
       userId: string;
       isVerified: boolean;
       previousStatus: boolean;
+      status?: "Pending" | "Verified" | "Rejected";
     }) => {
+      // Fetch current verification details
+      const { data: current } = await supabase
+        .from("userverifications")
+        .select("verification_details")
+        .eq("id", id)
+        .single();
+
+      const details = {
+        ...(current?.verification_details || {}),
+        status: status || (isVerified ? "Verified" : "Pending"),
+      };
+
       const { data, error } = await supabase
         .from("userverifications")
         .update({
           is_verified: isVerified,
           verified_at: isVerified ? new Date().toISOString() : null,
+          verification_details: details,
         })
         .eq("id", id)
         .select()

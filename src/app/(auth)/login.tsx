@@ -15,7 +15,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getExpoPushToken } from "../../../utils/getExpoPushToken";
+import { getPushToken } from "../../../utils/pushToken";
 import { supabase } from "../../../utils/supabase";
 import { useProfileStore } from "../../store/useProfileStore";
 import { theme } from "../../theme";
@@ -52,7 +52,7 @@ export default function LoginScreen() {
       }
 
       const userId = authData.user.id;
-      const currentToken = await getExpoPushToken();
+      const currentpushToken = await getPushToken();
 
       // Fetch user profile
       const { data: profileData, error: profileError } = await supabase
@@ -65,22 +65,25 @@ export default function LoginScreen() {
         throw profileError;
       }
 
-      if (profileData && currentToken) {
+      if (profileData && currentpushToken) {
         // Save token in notifications table (ignore duplicates)
         await supabase
           .from("notifications")
-          .upsert({ token: currentToken }, { onConflict: "token" });
+          .upsert({ token: currentpushToken }, { onConflict: "token" });
 
-        // Link token to the user
-        const { error: updateError } = await supabase
-          .from("users")
-          .update({
-            notification_token: currentToken,
-          })
-          .eq("id", profileData.id);
+        // Link token to the user if different from current or previous stored
+        if (profileData.notification_token !== currentpushToken) {
+          console.log("Updating user notification token on login using upsert:", currentpushToken);
+          const { error: updateError } = await supabase
+            .from("users")
+            .upsert({
+              ...profileData,
+              notification_token: currentpushToken,
+            });
 
-        if (updateError) {
-          throw updateError;
+          if (updateError) {
+            throw updateError;
+          }
         }
       }
 

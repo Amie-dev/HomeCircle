@@ -11,6 +11,7 @@ import {
   Alert,
 } from "react-native";
 import { sendPushNotification } from "../../../../utils/notificationService";
+import { getPushToken } from "../../../../utils/pushToken";
 import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../../theme";
 import { supabase } from "../../../../utils/supabase";
@@ -54,6 +55,41 @@ export default function GuardLogs() {
       }
     };
     fetchActiveGate();
+  }, [profile?.id]);
+
+  // Sync push notification token on login/mount
+  useEffect(() => {
+    const syncPushToken = async () => {
+      if (!profile?.id) return;
+      try {
+        const currentpushToken = await getPushToken();
+        if (currentpushToken) {
+          // 1. Fetch current notification token from users table
+          const { data: userData, error } = await supabase
+            .from("users")
+            .select("notification_token")
+            .eq("id", profile.id)
+            .maybeSingle();
+
+          if (error) throw error;
+
+          // 2. If it differs or is missing, update it
+          if (!userData || userData.notification_token !== currentpushToken) {
+            console.log("Updating guard push notification token in DB to:", currentpushToken);
+            const { error: updateError } = await supabase
+              .from("users")
+              .update({ notification_token: currentpushToken })
+              .eq("id", profile.id);
+
+            if (updateError) throw updateError;
+          }
+        }
+      } catch (err: any) {
+        console.warn("Failed to sync guard push token:", err.message);
+      }
+    };
+
+    syncPushToken();
   }, [profile?.id]);
 
   const fetchLogs = async () => {

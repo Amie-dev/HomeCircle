@@ -14,6 +14,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Linking,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../../../utils/supabase";
@@ -36,9 +38,12 @@ interface Resident {
   id: string;
   name: string;
   unit: string;
-  status: "Verified" | "Pending" | "Staff";
+  status: "Verified" | "Pending" | "Rejected";
+  role: "Resident" | "Guard" | "Admin";
   avatar: string | null;
   userId?: string;
+  phone?: string;
+  flatId?: string;
 }
 
 const mockResidents: Resident[] = [
@@ -47,6 +52,7 @@ const mockResidents: Resident[] = [
     name: "Arjun Mehta",
     unit: "Block C, 402",
     status: "Verified",
+    role: "Resident",
     avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuDTZMRVP0DI4I3sIz9HKazFkJmatdAz3A-A70E2slb_tZaqPc6TN1CGyPEKRWSggsxAMqmDEvkkogoRmY1UjZTyrMaSCNj3MBBOZ7-Vj4n_WKayA8HQXGzDE9ruw3dTyoO7M3v-x9Gjcf4QfxHRsly90DQhbdPUYJ-Qooas9PbyjwRk_2dQ_6Ib_F3WhjvJ8uWb3y49X6jQLWzAzzIVdGZfd2VVYPxFuRJ1muyrDakSAuMJI9D4Me6M1w",
   },
   {
@@ -54,6 +60,7 @@ const mockResidents: Resident[] = [
     name: "Sarah Jenkins",
     unit: "Block A, 105",
     status: "Pending",
+    role: "Resident",
     avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuBJyPPxuPXAHMzJzMQfMEpV0Yd-DPCW_-PgTK_B3Xip7ZFB7fny_nbRIpRFteiXs5A8tzTnFbvkK5t7_87kZ4M6Q5ELDvvHa3wORqQh2o_HznYdYWiwYXbi5AAfAu8z2DGR9fu5medz_6kdZ15ISIJq2vxcIR1kzs_VsKo59uLrVMwQPusqnYugh77hTZy795J9wQgK0AzXGzkNuOv50rt_uXYSo9upQa_b9ZE2X5_ETlsEU1SpEnpWUg",
   },
   {
@@ -61,13 +68,15 @@ const mockResidents: Resident[] = [
     name: "Robert Wilson",
     unit: "Block D, 201",
     status: "Verified",
+    role: "Resident",
     avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuASN0AaqVTtYTJltsQV1klpTH1acnjunXheJ97_C1DErufrnJTh-owyYVOIC2WrH5FVPiZRIjeEEfESYQvhOgLeQJrL9-6Tqfhrn0YM93ztre-HuDVmpaMw9ETGh23ApY1k0oVPBUpNScYkH19lckq6_hMEWa3xQb7rO0qUaxY9feEdbpgLcuaq_lN4tOT0PISANzvOQ4Y8IV-_cvoOD4WruhlKJQ0eWkdVfLZQrYn7-T3myWbtNZM7Rg",
   },
   {
     id: "res-4",
     name: "Sanjay Mishra",
     unit: "Maintenance Staff",
-    status: "Staff",
+    status: "Pending",
+    role: "Guard",
     avatar: null,
   },
   {
@@ -75,6 +84,7 @@ const mockResidents: Resident[] = [
     name: "Elena Rodriguez",
     unit: "Block B, 303",
     status: "Pending",
+    role: "Resident",
     avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuAvrqyIkCRQPMEjCbHedzn7GpHmFh7zLuFsGoftGN6YugN00UtLGiETlPDtqIkmwKj-bt4_cZSn_akAAkDdCyJ6eWeetV3AwTAy650tJYBh3Or741hkTtQ1WSWQJVR1UQ0LHQz2WNGHTSTEZiPzPeEWAqbJ1ot-xKDzTtN24T5It88f7QP_X37cGcZLVOSB3N0vDTogJ76S-s8yHf4dol1IvjSubBKUAcd57Fojec-afWgxw66QMiK8-w",
   },
 ];
@@ -84,7 +94,7 @@ export default function ManageResidents() {
   const { profile } = useProfileStore();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedFilter, setSelectedFilter] = useState<"All" | "Verified" | "Pending" | "Staff">("All");
+  const [selectedFilter, setSelectedFilter] = useState<"All" | "Verified" | "Pending" | "Rejected">("All");
 
   // Query and mutation hooks for database verifications
   const { data: dbVerifications, error: dbError } = useResidentVerifications(profile?.societyId);
@@ -96,7 +106,55 @@ export default function ManageResidents() {
   // Modal State
   const [selectedResident, setSelectedResident] = useState<Resident | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [modalStatus, setModalStatus] = useState<"Verified" | "Pending" | "Staff">("Pending");
+  const [modalStatus, setModalStatus] = useState<"Verified" | "Pending" | "Rejected">("Pending");
+  const [checkingOccupancy, setCheckingOccupancy] = useState(false);
+  const [flatVacant, setFlatVacant] = useState<boolean | null>(null);
+
+  const handleCall = (phoneNumber: string | undefined) => {
+    if (!phoneNumber) {
+      Alert.alert("Error", "No phone number available for this user.");
+      return;
+    }
+    Linking.openURL(`tel:${phoneNumber}`).catch(() => {
+      Alert.alert("Error", "Could not initiate call on this device.");
+    });
+  };
+
+  const handleCheckOccupancy = async (flatId: string | undefined) => {
+    if (!flatId) {
+      Alert.alert("Warning", "This resident does not have a flat assigned.");
+      return;
+    }
+    setCheckingOccupancy(true);
+    try {
+      const { data, error } = await supabase
+        .from("flats")
+        .select("status, flat_number")
+        .eq("id", flatId)
+        .single();
+
+      if (error) throw error;
+
+      if (data?.status === "Vacant") {
+        setFlatVacant(true);
+        Alert.alert(
+          "Flat is Vacant ✅",
+          `Flat ${data.flat_number} is currently VACANT. You can safely verify this resident.`
+        );
+      } else {
+        setFlatVacant(false);
+        Alert.alert(
+          "Flat is Occupied ⚠️",
+          `Flat ${data.flat_number} is currently marked as ${data.status.toUpperCase()}. You cannot verify residents for an occupied flat.`
+        );
+      }
+    } catch (err: any) {
+      console.error("Error checking flat status:", err);
+      Alert.alert("Error", err.message || "Failed to check flat status.");
+    } finally {
+      setCheckingOccupancy(false);
+    }
+  };
 
   // Request notifications permissions on component mount
   useEffect(() => {
@@ -144,16 +202,19 @@ export default function ManageResidents() {
         unit: v.role === "Guard"
           ? "Security Guard"
           : `${v.verification_details?.towerName || ""}, ${v.verification_details?.flatNumber || ""}`,
-        status: v.role === "Guard"
-          ? "Staff"
-          : (v.is_verified ? "Verified" : "Pending"),
+        status: v.is_verified
+          ? "Verified"
+          : (v.verification_details?.status === "Rejected" ? "Rejected" : "Pending"),
+        role: v.role || "Resident",
         avatar: null,
+        phone: v.users?.phone || "",
+        flatId: v.flat_id || "",
       }));
       setResidents(mapped);
     }
   }, [dbVerifications]);
 
-  const getStatusStyle = (status: "Verified" | "Pending" | "Staff") => {
+  const getStatusStyle = (status: "Verified" | "Pending" | "Rejected") => {
     switch (status) {
       case "Verified":
         return {
@@ -162,14 +223,14 @@ export default function ManageResidents() {
         };
       case "Pending":
         return {
-          bg: "rgba(186, 26, 26, 0.1)",
-          text: theme.colors.error,
+          bg: "rgba(219, 140, 0, 0.1)", // Amber background
+          text: "#DB8C00",               // Amber text
         };
-      case "Staff":
+      case "Rejected":
       default:
         return {
-          bg: "rgba(124, 131, 155, 0.15)",
-          text: theme.colors.onSurfaceVariant,
+          bg: "rgba(186, 26, 26, 0.1)", // Red background
+          text: theme.colors.error,       // Red text
         };
     }
   };
@@ -196,6 +257,7 @@ export default function ManageResidents() {
   const handleResidentPress = (resident: Resident) => {
     setSelectedResident(resident);
     setModalStatus(resident.status);
+    setFlatVacant(null);
     setIsModalVisible(true);
   };
 
@@ -210,70 +272,110 @@ export default function ManageResidents() {
     // Check if this resident is from Supabase (by looking for a matching verification request in dbVerifications)
     const isDbResident = dbVerifications?.some((v) => v.id === selectedResident.id);
 
-    if (isDbResident) {
-      try {
-        await updateVerification({
-          id: selectedResident.id,
-          userId: selectedResident.userId || selectedResident.id,
-          isVerified: newStatus === "Verified",
-          previousStatus: previousStatus === "Verified",
-        });
-
-        Alert.alert(
-          "Status Updated",
-          `${selectedResident.name}'s status has been successfully saved to the database.`
-        );
-      } catch (err: any) {
-        console.warn("Failed to update status in database:", err);
-        Alert.alert("Update Failed", err.message || "Failed to update resident status in database.");
-      }
-    } else {
-      // Offline fallback: Update in local state
-      setResidents((prev) =>
-        prev.map((res) =>
-          res.id === selectedResident.id ? { ...res, status: newStatus } : res
-        )
-      );
-
-      // If status changed to "Verified", trigger push notification offline
-      if (newStatus === "Verified" && previousStatus !== "Verified") {
+    const proceedWithSave = async () => {
+      if (isDbResident) {
         try {
-          const isGuard = selectedResident.unit === "Security Guard";
-          const targetUrl = isGuard ? "/guard" : "/resident";
-          const targetTitle = isGuard ? "Verification Approved 👮" : "Verification Approved 🏠";
-          const targetBody = isGuard ? "Approved! You are now active on duty." : "Approved! You are now a flat member.";
-
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: targetTitle,
-              body: targetBody,
-              data: {
-                residentId: selectedResident.id,
-                url: targetUrl,
-              },
-            },
-            trigger: null,
+          await updateVerification({
+            id: selectedResident.id,
+            userId: selectedResident.userId || selectedResident.id,
+            isVerified: newStatus === "Verified",
+            previousStatus: previousStatus === "Verified",
           });
+
           Alert.alert(
-            "Status Updated (Offline)",
-            `${selectedResident.name} is now Verified. Push notification sent.`
+            "Status Updated",
+            `${selectedResident.name}'s status has been successfully saved to the database.`
           );
-        } catch (error) {
-          console.warn("Failed to send push notification:", error);
-          Alert.alert(
-            "Status Updated (Offline)",
-            `${selectedResident.name} is now Verified.`
-          );
+        } catch (err: any) {
+          console.warn("Failed to update status in database:", err);
+          Alert.alert("Update Failed", err.message || "Failed to update resident status in database.");
         }
       } else {
-        Alert.alert(
-          "Status Updated (Offline)",
-          `${selectedResident.name}'s status has been changed to ${newStatus}.`
+        // Offline fallback: Update in local state
+        setResidents((prev) =>
+          prev.map((res) =>
+            res.id === selectedResident.id ? { ...res, status: newStatus } : res
+          )
         );
+
+        // If status changed to "Verified", trigger push notification offline
+        if (newStatus === "Verified" && previousStatus !== "Verified") {
+          try {
+            const isGuard = selectedResident.unit === "Security Guard";
+            const targetUrl = isGuard ? "/guard" : "/resident";
+            const targetTitle = isGuard ? "Verification Approved 👮" : "Verification Approved 🏠";
+            const targetBody = isGuard ? "Approved! You are now active on duty." : "Approved! You are now a flat member.";
+
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: targetTitle,
+                body: targetBody,
+                data: {
+                  residentId: selectedResident.id,
+                  url: targetUrl,
+                },
+              },
+              trigger: null,
+            });
+            Alert.alert(
+              "Status Updated (Offline)",
+              `${selectedResident.name} is now Verified. Push notification sent.`
+            );
+          } catch (error) {
+            console.warn("Failed to send push notification:", error);
+            Alert.alert(
+              "Status Updated (Offline)",
+              `${selectedResident.name} is now Verified.`
+            );
+          }
+        } else {
+          Alert.alert(
+            "Status Updated (Offline)",
+            `${selectedResident.name}'s status has been changed to ${newStatus}.`
+          );
+        }
+      }
+
+      setSelectedResident(null);
+    };
+
+    // Pre-save flat occupancy checks
+    if (newStatus === "Verified" && selectedResident.role === "Resident" && selectedResident.flatId && isDbResident) {
+      try {
+        const { data: flatData, error } = await supabase
+          .from("flats")
+          .select("status, flat_number")
+          .eq("id", selectedResident.flatId)
+          .single();
+
+        if (error) throw error;
+
+        if (flatData && flatData.status !== "Vacant") {
+          Alert.alert(
+            "Warning: Flat Occupied ⚠️",
+            `Flat ${flatData.flat_number} is currently marked as ${flatData.status.toUpperCase()}. Do you want to proceed and override?`,
+            [
+              {
+                text: "Proceed",
+                onPress: proceedWithSave,
+              },
+              {
+                text: "Cancel",
+                style: "cancel",
+                onPress: () => {
+                  setSelectedResident(null);
+                },
+              },
+            ]
+          );
+          return;
+        }
+      } catch (err) {
+        console.warn("Failed occupancy pre-check:", err);
       }
     }
 
-    setSelectedResident(null);
+    await proceedWithSave();
   };
 
   const handleAddResident = () => {
@@ -312,7 +414,7 @@ export default function ManageResidents() {
         {/* Filter Chips */}
         <View style={styles.filterContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-            {(["All", "Verified", "Pending", "Staff"] as const).map((filter) => {
+            {(["All", "Verified", "Pending", "Rejected"] as const).map((filter) => {
               const isActive = selectedFilter === filter;
               return (
                 <TouchableOpacity
@@ -370,10 +472,17 @@ export default function ManageResidents() {
                       <View style={styles.infoWrapper}>
                         <Text style={styles.residentName}>{resident.name}</Text>
                         <Text style={styles.residentUnit}>{resident.unit}</Text>
-                        <View style={[styles.statusBadge, { backgroundColor: statusStyles.bg }]}>
-                          <Text style={[styles.statusBadgeText, { color: statusStyles.text }]}>
-                            {resident.status}
-                          </Text>
+                        <View style={{ flexDirection: "row", gap: 6, alignItems: "center", marginTop: 4 }}>
+                          <View style={[styles.statusBadge, { backgroundColor: statusStyles.bg }]}>
+                            <Text style={[styles.statusBadgeText, { color: statusStyles.text }]}>
+                              {resident.status}
+                            </Text>
+                          </View>
+                          <View style={[styles.roleBadge, { backgroundColor: theme.colors.surfaceContainerHigh }]}>
+                            <Text style={styles.roleBadgeText}>
+                              {resident.role}
+                            </Text>
+                          </View>
                         </View>
                       </View>
                     </View>
@@ -443,24 +552,68 @@ export default function ManageResidents() {
                   <Text style={styles.modalUnit}>{selectedResident.unit}</Text>
                 </View>
 
+                {/* Call & Occupancy Section */}
+                <View style={styles.modalExtraSection}>
+                  <View style={styles.detailRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.detailLabel}>Phone Number</Text>
+                      <Text style={styles.detailValue}>{selectedResident.phone || "Not Registered"}</Text>
+                    </View>
+                    {selectedResident.phone ? (
+                      <TouchableOpacity
+                        style={styles.modalCallButton}
+                        onPress={() => handleCall(selectedResident.phone)}
+                      >
+                        <MaterialIcons name="phone" size={16} color="#ffffff" />
+                        <Text style={styles.modalCallButtonText}>Call</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+
+                  {selectedResident.role === "Resident" && selectedResident.flatId ? (
+                    <View style={[styles.detailRow, { marginTop: 12, borderTopWidth: 1, borderTopColor: "rgba(198,198,205,0.15)", paddingTop: 12 }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.detailLabel}>Occupancy Status</Text>
+                        <Text style={styles.detailValue}>Check flat registration details</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.modalCheckButton}
+                        onPress={() => handleCheckOccupancy(selectedResident.flatId)}
+                        disabled={checkingOccupancy}
+                      >
+                        {checkingOccupancy ? (
+                          <ActivityIndicator size="small" color={theme.colors.primary} />
+                        ) : (
+                          <>
+                            <MaterialIcons name="domain-verification" size={16} color={theme.colors.primary} />
+                            <Text style={styles.modalCheckButtonText}>Check Vacancy</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+                </View>
+
                 {/* Status Selection */}
                 <View style={styles.statusSection}>
                   <Text style={styles.statusSectionTitle}>Update Verification Status</Text>
                   <View style={styles.statusOptionRow}>
-                    {(["Pending", "Verified", "Staff"] as const).map((status) => {
+                    {(["Pending", "Verified", "Rejected"] as const).map((status) => {
                       const isActive = modalStatus === status;
+                      const isVerifiedDisabled = status === "Verified" && selectedResident.role === "Resident" && flatVacant === false;
+
                       let activeColor = theme.colors.outline;
                       let activeBg = theme.colors.surfaceContainer;
 
                       if (status === "Verified") {
-                        activeColor = theme.colors.secondary;
-                        activeBg = "rgba(0, 106, 97, 0.1)";
+                        activeColor = isVerifiedDisabled ? theme.colors.outline : theme.colors.secondary;
+                        activeBg = isVerifiedDisabled ? "rgba(198, 198, 205, 0.1)" : "rgba(0, 106, 97, 0.1)";
                       } else if (status === "Pending") {
+                        activeColor = "#DB8C00";
+                        activeBg = "rgba(219, 140, 0, 0.1)";
+                      } else if (status === "Rejected") {
                         activeColor = theme.colors.error;
                         activeBg = "rgba(186, 26, 26, 0.1)";
-                      } else if (status === "Staff") {
-                        activeColor = theme.colors.onSurfaceVariant;
-                        activeBg = "rgba(124, 131, 155, 0.15)";
                       }
 
                       return (
@@ -472,16 +625,24 @@ export default function ManageResidents() {
                               borderColor: activeColor,
                               backgroundColor: activeBg,
                             },
+                            isVerifiedDisabled && { opacity: 0.4 }
                           ]}
-                          onPress={() => setModalStatus(status)}
+                          onPress={() => {
+                            if (isVerifiedDisabled) {
+                              Alert.alert("Blocked 🚫", "This flat is already occupied. You must reject or keep it pending.");
+                              return;
+                            }
+                            setModalStatus(status);
+                          }}
+                          disabled={isVerifiedDisabled && isActive}
                         >
                           <View
                             style={[
                               styles.statusDot,
                               {
-                                backgroundColor: isActive
-                                  ? activeColor
-                                  : theme.colors.outlineVariant,
+                                backgroundColor: isVerifiedDisabled
+                                  ? theme.colors.outlineVariant
+                                  : (isActive ? activeColor : theme.colors.outlineVariant),
                               },
                             ]}
                           />
@@ -489,6 +650,7 @@ export default function ManageResidents() {
                             style={[
                               styles.statusOptionText,
                               isActive && { color: activeColor, fontWeight: "700" },
+                              isVerifiedDisabled && { color: theme.colors.outline }
                             ]}
                           >
                             {status}
@@ -846,6 +1008,72 @@ const styles = StyleSheet.create({
   saveBtnText: {
     ...theme.typography.button,
     color: theme.colors.onSecondary,
+    fontWeight: "700",
+  },
+  roleBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: theme.rounded.sm,
+  },
+  roleBadgeText: {
+    ...theme.typography.labelMd,
+    fontSize: 10,
+    color: theme.colors.onSurfaceVariant,
+    fontWeight: "600",
+  },
+  modalExtraSection: {
+    backgroundColor: theme.colors.surfaceContainerLow,
+    borderRadius: theme.rounded.md,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+  },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  detailLabel: {
+    ...theme.typography.labelMd,
+    color: theme.colors.outline,
+    fontWeight: "600",
+  },
+  detailValue: {
+    ...theme.typography.bodyMd,
+    color: theme.colors.primary,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  modalCallButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: theme.rounded.sm,
+    gap: 4,
+  },
+  modalCallButtonText: {
+    ...theme.typography.button,
+    fontSize: 12,
+    color: "#ffffff",
+    fontWeight: "700",
+  },
+  modalCheckButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: theme.colors.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: theme.rounded.sm,
+    gap: 4,
+  },
+  modalCheckButtonText: {
+    ...theme.typography.button,
+    fontSize: 12,
+    color: theme.colors.primary,
     fontWeight: "700",
   },
 });
