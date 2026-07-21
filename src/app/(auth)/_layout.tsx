@@ -1,5 +1,5 @@
-import React from "react";
 import { Redirect, Stack } from "expo-router";
+import React from "react";
 import { ActivityIndicator, View } from "react-native";
 import { useProfileStore } from "../../store/useProfileStore";
 import { theme } from "../../theme";

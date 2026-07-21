@@ -1,10 +1,10 @@
-import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useRef } from 'react';
+import { MaterialCommunityIcons, MaterialIcons } from "@expo/vector-icons";
+import { Image } from "expo-image";
+import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import React, { useEffect, useRef } from "react";
 import {
-  Alert,
+  ActivityIndicator,
   Animated,
   Platform,
   ScrollView,
@@ -12,11 +12,11 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { theme } from '../theme';
-import { FadeInView } from '../components/welcome/FadeInView';
-import { useProfileStore } from '../store/useProfileStore';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { FadeInView } from "../components/welcome/FadeInView";
+import { useProfileStore } from "../store/useProfileStore";
+import { theme } from "../theme";
 
 export default function WelcomeScreen() {
   const router = useRouter();
@@ -26,6 +26,21 @@ export default function WelcomeScreen() {
     loadProfile();
   }, []);
 
+  // // While profile is being loaded from storage, show a spinner
+  if (isLoadingProfile) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: theme.colors.background,
+        }}
+      >
+        <ActivityIndicator size="large" color={theme.colors.secondary} />
+      </View>
+    );
+  }
   useEffect(() => {
     if (!isLoadingProfile && profile) {
       if (profile.role === "Resident") {
@@ -58,11 +73,11 @@ export default function WelcomeScreen() {
   };
 
   const handleGetStarted = () => {
-    router.push('/get-started' as any);
+    router.push("/get-started" as any);
   };
 
   const handleLogin = () => {
-    router.push('/login' as any);
+    router.push("/login" as any);
   };
 
   return (
@@ -108,7 +123,9 @@ export default function WelcomeScreen() {
                 <View style={styles.verifiedIconWrapper}>
                   <MaterialIcons name="verified" size={14} color="#ffffff" />
                 </View>
-                <Text style={styles.glassCardText}>Verified Community #2401</Text>
+                <Text style={styles.glassCardText}>
+                  Verified Community #2401
+                </Text>
               </View>
             </View>
           </FadeInView>
@@ -117,24 +134,37 @@ export default function WelcomeScreen() {
           <FadeInView delay={400} style={styles.textSection}>
             <Text style={styles.headline}>Welcome to HomeCircle</Text>
             <Text style={styles.subtitle}>
-              Your modern community management platform. Elevating residential living with smart security and seamless interactions.
+              Your modern community management platform. Elevating residential
+              living with smart security and seamless interactions.
             </Text>
           </FadeInView>
 
           {/* Benefit Pills */}
           <FadeInView delay={550} style={styles.pillsContainer}>
             <View style={styles.pill}>
-              <MaterialIcons name="security" size={16} color={theme.colors.secondary} />
+              <MaterialIcons
+                name="security"
+                size={16}
+                color={theme.colors.secondary}
+              />
               <Text style={styles.pillText}>Secure Access</Text>
             </View>
 
             <View style={styles.pill}>
-              <MaterialIcons name="groups" size={16} color={theme.colors.secondary} />
+              <MaterialIcons
+                name="groups"
+                size={16}
+                color={theme.colors.secondary}
+              />
               <Text style={styles.pillText}>Community</Text>
             </View>
 
             <View style={styles.pill}>
-              <MaterialIcons name="receipt-long" size={16} color={theme.colors.secondary} />
+              <MaterialIcons
+                name="receipt-long"
+                size={16}
+                color={theme.colors.secondary}
+              />
               <Text style={styles.pillText}>Digital Billing</Text>
             </View>
           </FadeInView>
@@ -156,7 +186,8 @@ export default function WelcomeScreen() {
 
             <TouchableOpacity style={styles.loginLink} onPress={handleLogin}>
               <Text style={styles.loginText}>
-                Already a resident? <Text style={styles.loginHighlight}>Log In</Text>
+                Already a resident?{" "}
+                <Text style={styles.loginHighlight}>Log In</Text>
               </Text>
             </TouchableOpacity>
           </FadeInView>
@@ -179,49 +210,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.containerMarginMobile,
     paddingTop: theme.spacing.xl,
     paddingBottom: theme.spacing.xl,
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
   },
   blob1: {
-    position: 'absolute',
+    position: "absolute",
     top: -96,
     left: -96,
     width: 256,
     height: 256,
     borderRadius: 128,
     backgroundColor: theme.colors.secondaryContainer,
-    opacity: 0.20,
+    opacity: 0.2,
   },
   blob2: {
-    position: 'absolute',
-    top: '50%',
+    position: "absolute",
+    top: "50%",
     right: -128,
     width: 320,
     height: 320,
     borderRadius: 160,
     backgroundColor: theme.colors.primaryFixed,
-    opacity: 0.10,
+    opacity: 0.1,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: theme.spacing.lg,
   },
   logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing.sm,
   },
   logoText: {
     ...theme.typography.headlineLgMobile,
     color: theme.colors.secondary,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   heroContainer: {
-    position: 'relative',
-    width: '100%',
+    position: "relative",
+    width: "100%",
     aspectRatio: 4 / 5,
     borderRadius: 24,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginBottom: theme.spacing.xl,
     ...Platform.select({
       ios: {
@@ -236,17 +267,17 @@ const styles = StyleSheet.create({
     }),
   },
   heroImage: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
   },
   glassCard: {
-    position: 'absolute',
+    position: "absolute",
     bottom: theme.spacing.md,
     left: theme.spacing.md,
     right: theme.spacing.md,
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderColor: "rgba(255, 255, 255, 0.3)",
     borderRadius: 16,
     padding: theme.spacing.md,
     ...Platform.select({
@@ -262,16 +293,16 @@ const styles = StyleSheet.create({
     }),
   },
   glassCardBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing.sm,
   },
   verifiedIconWrapper: {
     padding: 2,
     backgroundColor: theme.colors.secondary,
     borderRadius: 9999,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   glassCardText: {
     ...theme.typography.labelMd,
@@ -291,14 +322,14 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   pillsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: theme.spacing.sm,
     marginBottom: theme.spacing.xl,
   },
   pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing.xs,
     backgroundColor: theme.colors.surfaceContainerHigh,
     borderRadius: theme.rounded.full,
@@ -310,15 +341,15 @@ const styles = StyleSheet.create({
     color: theme.colors.onSurface,
   },
   footer: {
-    marginTop: 'auto',
+    marginTop: "auto",
   },
   primaryButton: {
     backgroundColor: theme.colors.primary,
     borderRadius: theme.rounded.md,
     paddingVertical: theme.spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     gap: theme.spacing.sm,
     shadowColor: theme.colors.primary,
     shadowOffset: { width: 0, height: 8 },
@@ -332,7 +363,7 @@ const styles = StyleSheet.create({
   },
   loginLink: {
     marginTop: theme.spacing.md,
-    alignItems: 'center',
+    alignItems: "center",
   },
   loginText: {
     ...theme.typography.labelMd,
@@ -340,6 +371,6 @@ const styles = StyleSheet.create({
   },
   loginHighlight: {
     color: theme.colors.secondary,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 });

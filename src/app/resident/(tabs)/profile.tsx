@@ -81,6 +81,19 @@ export default function ProfileScreen() {
       const isAdmin = flatAdminId === profile.id;
       setIsFlatAdmin(isAdmin);
 
+      // Fetch all member user IDs residing in the same flat
+      let flatUserIds = [profile.id];
+      if (memberData?.flat_id) {
+        const { data: flatMembers } = await supabase
+          .from("societymembers")
+          .select("user_id")
+          .eq("flat_id", memberData.flat_id);
+        
+        if (flatMembers && flatMembers.length > 0) {
+          flatUserIds = flatMembers.map((m) => m.user_id);
+        }
+      }
+
       if (memberData?.flat_id) {
         const { data: invoices } = await supabase
           .from("maintenance_invoices")
@@ -94,21 +107,21 @@ export default function ProfileScreen() {
         }
       }
 
-      // 2. Query household members for the flat (using flatAdminId)
+      // 2. Query household members for the flat (using flatUserIds)
       const { data: householdData } = await supabase
         .from("household_members")
         .select("*")
-        .eq("user_id", flatAdminId);
+        .in("user_id", flatUserIds);
 
       if (householdData) {
         setHousehold(householdData);
       }
 
-      // 3. Query vehicles for the flat (using flatAdminId)
+      // 3. Query vehicles for the flat (using flatUserIds)
       const { data: vehiclesData } = await supabase
         .from("vehicles")
         .select("*")
-        .eq("user_id", flatAdminId);
+        .in("user_id", flatUserIds);
 
       if (vehiclesData) {
         setVehicles(vehiclesData);

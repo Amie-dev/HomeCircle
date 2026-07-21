@@ -102,7 +102,7 @@ export default function AddVehicleScreen() {
   const insets = useSafeAreaInsets();
   const { profile } = useProfileStore();
 
-  const isFlatAdmin = params.isFlatAdmin === "true";
+  const [isFlatAdmin, setIsFlatAdmin] = useState(params.isFlatAdmin === "true");
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -135,11 +135,26 @@ export default function AddVehicleScreen() {
           .maybeSingle();
 
         const flatAdminId = (memberData?.flats as any)?.flat_admin_id || profile.id;
+        const isAdmin = flatAdminId === profile.id;
+        setIsFlatAdmin(isAdmin);
+
+        // Fetch all member user IDs residing in the same flat
+        let flatUserIds = [profile.id];
+        if (memberData?.flat_id) {
+          const { data: flatMembers } = await supabase
+            .from("societymembers")
+            .select("user_id")
+            .eq("flat_id", memberData.flat_id);
+
+          if (flatMembers && flatMembers.length > 0) {
+            flatUserIds = flatMembers.map((m) => m.user_id);
+          }
+        }
 
         const { data, error } = await supabase
           .from("vehicles")
           .select("*")
-          .eq("user_id", flatAdminId)
+          .in("user_id", flatUserIds)
           .order("created_at", { ascending: false });
         if (error) throw error;
         setVehicles((data as Vehicle[]) || []);
