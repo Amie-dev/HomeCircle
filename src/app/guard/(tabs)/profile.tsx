@@ -34,12 +34,13 @@ export default function GuardProfile() {
         .from("guard_assignments")
         .select("*")
         .eq("guard_id", profile.id)
-        .maybeSingle();
+        .order("created_at", { ascending: false })
+        .limit(1);
 
       if (error) throw error;
-      if (data) {
+      if (data && data.length > 0) {
         setOnDuty(true);
-        setActiveGate(data.gate_name);
+        setActiveGate(data[0].gate_name);
       } else {
         setOnDuty(false);
         setActiveGate("");

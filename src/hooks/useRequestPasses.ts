@@ -362,10 +362,16 @@ export function useRegisterProfile() {
       vehicle_number: string | null;
       notification_token: string | undefined;
     }) => {
-      console.log("useRegisterProfile: Attempting to insert guest user into guestusers table:", userData);
+      const randomAvatarUrl = `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(userData.full_name.trim() || Math.random().toString())}`;
+      const payload = {
+        ...userData,
+        avatar_url: randomAvatarUrl,
+      };
+
+      console.log("useRegisterProfile: Attempting to insert guest user into guestusers table:", payload);
       const { data: newUser, error } = await supabase
         .from("guestusers")
-        .insert(userData)
+        .insert(payload)
         .select()
         .single();
 
@@ -390,7 +396,7 @@ export function useRegisterProfile() {
             );
           }
 
-          console.log("useRegisterProfile: Fetched existing duplicate user profile:", existingUser);
+          console.log("useRegisterProfile: Cultivated existing duplicate user profile:", existingUser);
 
           // Update their notification token in guestusers if they don't have it, or if we have a new one
           if (userData.notification_token && existingUser.notification_token !== userData.notification_token) {
@@ -425,6 +431,7 @@ export function useRegisterProfile() {
             vehicleNumber: existingUser.vehicle_number || undefined,
             token: existingUser.notification_token || undefined,
             joinedAt: existingUser.created_at,
+            avatarUrl: existingUser.avatar_url || undefined,
           };
           console.log("useRegisterProfile: Returning resolved guest profile from duplicate handler:", guestProfile);
           return guestProfile;
@@ -444,6 +451,7 @@ export function useRegisterProfile() {
         vehicleNumber: newUser.vehicle_number || undefined,
         token: activeToken,
         joinedAt: newUser.created_at,
+        avatarUrl: newUser.avatar_url || undefined,
       };
 
       return guestProfile;

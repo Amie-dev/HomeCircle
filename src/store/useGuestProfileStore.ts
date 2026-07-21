@@ -9,6 +9,7 @@ export interface GuestProfile {
   vehicleNumber?: string;
   token?: string;
   joinedAt?: string;
+  avatarUrl?: string;
 }
 
 interface GuestProfileState {

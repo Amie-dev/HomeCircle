@@ -41,6 +41,8 @@ export const ScreenHeader: React.FC<ScreenHeaderProps> = ({ onBack }) => {
     }
   };
 
+  const activeProfile = profile || guestProfile;
+
   return (
     <SafeAreaView edges={["top"]} style={styles.safeHeader}>
       <View style={styles.header}>
@@ -52,11 +54,25 @@ export const ScreenHeader: React.FC<ScreenHeaderProps> = ({ onBack }) => {
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity style={styles.headerAvatar} onPress={handleAvatarPress}>
-            <Image
-              source="https://lh3.googleusercontent.com/aida-public/AB6AXuApZv0zPdGhFUY9HDxlV-s5r_FpzwFnRiOjmjKAiJF1v7xUmEitqff1h7i4oNcyQfSWKUGqmx_rFzXXCKWvX3IJQJ1yRQSiIa8lGDDutoncBO_-X_7wU-zbcrXZLHtikTXeAeQzCdXFhyhA4p90vgqFnF8GHus4cf1CLu2Jib7dr8MqsnCHYJRSdRz6HBaPNap0fDZXrbh6muNOCegpspKzKIDH66rT9AwREQs0EDuDJjZYSFnLQjckOw"
-              style={styles.avatarImage}
-              contentFit="cover"
-            />
+            {activeProfile ? (
+              activeProfile.avatarUrl ? (
+                <Image
+                  source={activeProfile.avatarUrl}
+                  style={styles.avatarImage}
+                  contentFit="cover"
+                />
+              ) : (
+                <View style={styles.avatarFallback}>
+                  <Text style={styles.avatarFallbackText}>
+                    {activeProfile.fullName ? activeProfile.fullName.trim().charAt(0).toUpperCase() : "?"}
+                  </Text>
+                </View>
+              )
+            ) : (
+              <View style={styles.avatarFallback}>
+                <MaterialIcons name="person" size={18} color={theme.colors.secondary} />
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.notifyButton}>
             <MaterialIcons name="notifications" size={22} color={theme.colors.secondary} />
@@ -110,6 +126,18 @@ const styles = StyleSheet.create({
   avatarImage: {
     width: "100%",
     height: "100%",
+  },
+  avatarFallback: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: theme.colors.secondaryContainer,
+  },
+  avatarFallbackText: {
+    color: theme.colors.secondary,
+    fontSize: 14,
+    fontWeight: "700",
   },
   notifyButton: {
     padding: 4,

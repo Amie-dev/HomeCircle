@@ -69,6 +69,8 @@ export default function CreateAccountScreen() {
         }
       }
 
+      const randomAvatarUrl = `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(fullName.trim() || Math.random().toString())}`;
+
       // 1b. Insert credentials into custom database users table
       const { error: dbError } = await supabase
         .from("users")
@@ -79,7 +81,8 @@ export default function CreateAccountScreen() {
           phone: phone,
           email: email.trim(),
           password: password,
-          notification_token: token
+          notification_token: token,
+          avatar_url: randomAvatarUrl,
         });
 
       if (dbError) {
@@ -94,6 +97,7 @@ export default function CreateAccountScreen() {
         email: email.trim(),
         password,
         role,
+        avatarUrl: randomAvatarUrl,
       });
 
       // 3. Forward to role-specific setup screens
@@ -115,6 +119,7 @@ export default function CreateAccountScreen() {
             {
               text: "Continue Offline",
               onPress: () => {
+                const randomAvatarUrl = `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(fullName.trim() || Math.random().toString())}`;
                 setSignupData({
                   id: "b617bf12-1c95-4073-9c3f-e3ead539540a",
                   fullName,
@@ -122,6 +127,7 @@ export default function CreateAccountScreen() {
                   email: email.trim(),
                   password,
                   role,
+                  avatarUrl: randomAvatarUrl,
                 });
                 if (role === "Resident") {
                   router.push("/resident-details" as any);
@@ -150,6 +156,7 @@ export default function CreateAccountScreen() {
       const mockName = `${provider} User`;
       const mockEmail = `${provider.toLowerCase()}user-${Date.now()}@gmail.com`;
       const mockPhone = "9999999999";
+      const randomAvatarUrl = `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(mockName.trim() || Math.random().toString())}`;
 
       // Insert into users table with default Resident role
       const { error: dbError } = await supabase
@@ -161,6 +168,7 @@ export default function CreateAccountScreen() {
           phone: mockPhone,
           email: mockEmail,
           password: "", // no password for social logins
+          avatar_url: randomAvatarUrl,
         });
 
       if (dbError) {
@@ -174,6 +182,7 @@ export default function CreateAccountScreen() {
         email: mockEmail,
         password: "",
         role: "Resident",
+        avatarUrl: randomAvatarUrl,
       });
 
       Alert.alert(
@@ -190,13 +199,16 @@ export default function CreateAccountScreen() {
       console.warn(`${provider} signup failed:`, err.message);
       // Fallback offline state
       const mockId = "social-uuid-mock-" + Date.now();
+      const mockName = `${provider} User (Offline)`;
+      const randomAvatarUrl = `https://api.dicebear.com/7.x/avataaars/png?seed=${encodeURIComponent(mockName.trim() || Math.random().toString())}`;
       setSignupData({
         id: mockId,
-        fullName: `${provider} User (Offline)`,
+        fullName: mockName,
         phone: "9999999999",
         email: `${provider.toLowerCase()}-${Date.now()}@example.com`,
         password: "",
         role: "Resident",
+        avatarUrl: randomAvatarUrl,
       });
       router.push("/resident-details" as any);
     } finally {

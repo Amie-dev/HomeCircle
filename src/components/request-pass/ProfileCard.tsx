@@ -32,11 +32,19 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({ profile }) => {
   return (
     <View style={styles.profileCard}>
       <View style={styles.avatarLarge}>
-        <Image
-          source="https://lh3.googleusercontent.com/aida-public/AB6AXuBTMBh4-GIrTmlW0UH0iX_HS4vl7kjhrp-NhiMa556X8KgMN-JUGyoNkL_aokODbofEzt2S_lB8yIeE1qNAE0AVaoF1Ly7B2XjDrMy478nszltXlQ2SelaWYfNBDgA5jAVe3QQK1SNzGFtvs7uQU7Azx4lRH9donpkcJgfkFYy-gMe6cwKAxYnDCRV-N8Q9Alo2VgvkRkBsSjeikCxUHIflDuWY0PC6GAFtlO9F_co9xs4lqQPQ1CIZ7g"
-          style={styles.avatarImage}
-          contentFit="cover"
-        />
+        {profile.avatarUrl ? (
+          <Image
+            source={profile.avatarUrl}
+            style={styles.avatarImage}
+            contentFit="cover"
+          />
+        ) : (
+          <View style={styles.avatarFallback}>
+            <Text style={styles.avatarFallbackText}>
+              {profile.fullName ? profile.fullName.trim().charAt(0).toUpperCase() : "?"}
+            </Text>
+          </View>
+        )}
       </View>
       <View style={styles.profileDetails}>
         <View style={styles.profileNameRow}>
@@ -94,6 +102,18 @@ const styles = StyleSheet.create({
   avatarImage: {
     width: "100%",
     height: "100%",
+  },
+  avatarFallback: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: theme.colors.secondaryContainer,
+  },
+  avatarFallbackText: {
+    color: theme.colors.secondary,
+    fontSize: 24,
+    fontWeight: "700",
   },
   profileDetails: {
     flex: 1,

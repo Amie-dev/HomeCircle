@@ -1,7 +1,6 @@
 import { MaterialIcons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -18,10 +17,10 @@ import {
 } from "react-native";
 import { sendPushNotification } from "../../../../utils/notificationService";
 import { supabase } from "../../../../utils/supabase";
+import VisitorDetailModal from "../../../components/VisitorDetailModal";
 import { usePassesHistory } from "../../../hooks/useRequestPasses";
 import { useProfileStore } from "../../../store/useProfileStore";
 import { theme } from "../../../theme";
-import VisitorDetailModal from "../../../components/VisitorDetailModal";
 
 export default function VisitorsScreen() {
   const router = useRouter();
@@ -33,7 +32,7 @@ export default function VisitorsScreen() {
 
   const handleVisitorPress = (item: any) => {
     const isMock = item.id.startsWith("mock-") || item.id.startsWith("act-") || item.id.startsWith("res-");
-    
+
     const typeMap: Record<string, any> = {
       "Delivery": "Delivery",
       "Guest": "Guest",
@@ -125,14 +124,21 @@ export default function VisitorsScreen() {
   });
 
   // Fetch visitor history/live data
-  const { data: historyList = [], isLoading, isFetching, refetch } = usePassesHistory(
-    profile?.id,
-    profile?.role,
-    profile?.societyId,
-    profile?.towerId,
-    profile?.towerName,
-    profile?.flatName,
-  );
+  // const { data: historyList = [], isLoading, isFetching, refetch } = usePassesHistory(
+  //   profile?.id,
+  //   profile?.role,
+  //   profile?.societyId,
+  //   profile?.towerId,
+  //   profile?.towerName,
+  //   profile?.flatName,
+  // );
+  // Fetch passes history to count active/pending and display recent activity
+  const { data: historyList = [], isLoading, isFetching, refetch } = usePassesHistory(profile?.id);
+  // console.log({
+  //   historyList
+  // })
+  // Live pending count
+  // const pendingPasses = historyList.filter(pass => pass.status === "Pending");
 
   useFocusEffect(
     useCallback(() => {

@@ -1,13 +1,13 @@
-import React, { useState, useEffect } from "react";
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, ImageBackground, Image } from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { MaterialIcons } from "@expo/vector-icons";
-import { theme } from "../../../theme";
-import { useProfileStore } from "../../../store/useProfileStore";
-import { usePassesHistory } from "../../../hooks/useRequestPasses";
+import React, { useEffect, useState } from "react";
+import { Alert, Image, ImageBackground, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { supabase } from "../../../../utils/supabase";
 import VisitorDetailModal from "../../../components/VisitorDetailModal";
+import { usePassesHistory } from "../../../hooks/useRequestPasses";
+import { useProfileStore } from "../../../store/useProfileStore";
+import { theme } from "../../../theme";
 
 export default function ResidentDashboard() {
   const router = useRouter();
@@ -206,16 +206,16 @@ export default function ResidentDashboard() {
   ];
 
   // Merge or show mock activities to match layout copy
-  const activitiesToDisplay = historyList.length > 0 
+  const activitiesToDisplay = historyList.length > 0
     ? historyList.slice(0, 3).map(pass => ({
-        id: pass.id,
-        visitor_name: pass.visitor_name,
-        time: new Date(pass.created_at).toLocaleDateString("en-IN", { month: "short", day: "numeric" }) + ", " + new Date(pass.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
-        status: pass.status === "Verified" ? "Entered" : pass.status,
-        icon: pass.designation.toLowerCase().includes("delivery") ? "delivery-dining" : pass.designation.toLowerCase().includes("service") ? "cleaning-services" : "person",
-        avatar: null,
-        rawPass: pass,
-      }))
+      id: pass.id,
+      visitor_name: pass.visitor_name,
+      time: new Date(pass.created_at).toLocaleDateString("en-IN", { month: "short", day: "numeric" }) + ", " + new Date(pass.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
+      status: pass.status === "Verified" ? "Entered" : pass.status,
+      icon: pass.designation.toLowerCase().includes("delivery") ? "delivery-dining" : pass.designation.toLowerCase().includes("service") ? "cleaning-services" : "person",
+      avatar: null,
+      rawPass: pass,
+    }))
     : mockRecentActivity;
 
   return (
@@ -250,7 +250,7 @@ export default function ResidentDashboard() {
         {/* Hero Status Cards - Bento Style */}
         <View style={styles.bentoContainer}>
           {/* Active Visitors Card */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.activeVisitorsCard}
             onPress={() => router.push("/resident/visitors" as any)}
           >
@@ -272,7 +272,7 @@ export default function ResidentDashboard() {
           {/* Sub Bento Cards */}
           <View style={styles.bentoRow}>
             {/* Notices */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.halfCard}
               onPress={() => router.push("/resident/community" as any)}
             >
@@ -392,8 +392,8 @@ export default function ResidentDashboard() {
       </ScrollView>
 
       {/* FAB to Pre-approve Guest */}
-      <TouchableOpacity 
-        style={styles.fab} 
+      <TouchableOpacity
+        style={styles.fab}
         onPress={() => router.push("/resident/(home)/pre-approve" as any)}
       >
         <MaterialIcons name="add" size={28} color="#ffffff" />

@@ -1,27 +1,27 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-  Animated,
-  Modal,
-  TextInput,
-  Platform,
-  KeyboardAvoidingView,
-} from "react-native";
-import { useRouter, useFocusEffect } from "expo-router";
-import { StatusBar } from "expo-status-bar";
 import { MaterialIcons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { theme } from "../../../theme";
-import { useProfileStore } from "../../../store/useProfileStore";
-import { supabase } from "../../../../utils/supabase";
+import { useFocusEffect, useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Animated,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { sendPushNotification } from "../../../../utils/notificationService";
+import { supabase } from "../../../../utils/supabase";
+import { useProfileStore } from "../../../store/useProfileStore";
+import { theme } from "../../../theme";
 
 export default function GuardScanner() {
   const router = useRouter();
@@ -43,7 +43,8 @@ export default function GuardScanner() {
   const [registering, setRegistering] = useState(false);
 
   // Scanned verification state
-  const [verificationModalVisible, setVerificationModalVisible] = useState(false);
+  const [verificationModalVisible, setVerificationModalVisible] =
+    useState(false);
   const [scannedPass, setScannedPass] = useState<any>(null);
   const [residentFlat, setResidentFlat] = useState<any>(null);
   const [residentTower, setResidentTower] = useState<any>(null);
@@ -75,7 +76,7 @@ export default function GuardScanner() {
               duration: 2000,
               useNativeDriver: true,
             }),
-          ])
+          ]),
         ).start();
       };
       runAnimation();
@@ -90,7 +91,8 @@ export default function GuardScanner() {
       setLoadingLogs(true);
       const { data, error } = await supabase
         .from("visitor_logs")
-        .select(`
+        .select(
+          `
           id,
           created_at,
           action_type,
@@ -100,7 +102,8 @@ export default function GuardScanner() {
             tower_no,
             flat_no
           )
-        `)
+        `,
+        )
         .eq("requestpasses.resident_details->>societyId", profile.societyId)
         .order("created_at", { ascending: false })
         .limit(3);
@@ -128,12 +131,13 @@ export default function GuardScanner() {
             .from("guard_assignments")
             .select("gate_name")
             .eq("guard_id", profile.id)
-            .maybeSingle();
+            .order("created_at", { ascending: false })
+            .limit(1);
 
           if (error) throw error;
-          if (data) {
+          if (data && data.length > 0) {
             setIsOnDuty(true);
-            setGateName(data.gate_name || "Main Gate");
+            setGateName(data[0].gate_name || "Main Gate");
           } else {
             setIsOnDuty(false);
           }
@@ -148,7 +152,7 @@ export default function GuardScanner() {
       if (profile?.societyId) {
         fetchRecentLogs();
       }
-    }, [profile?.id, profile?.societyId])
+    }, [profile?.id, profile?.societyId]),
   );
 
   const handleBarcodeScanned = async ({ data }: { data: string }) => {
@@ -159,7 +163,7 @@ export default function GuardScanner() {
       Alert.alert(
         "Access Denied",
         "Your guard account is pending verification by the society admin.",
-        [{ text: "OK", onPress: () => setScanned(false) }]
+        [{ text: "OK", onPress: () => setScanned(false) }],
       );
       return;
     }
@@ -168,7 +172,7 @@ export default function GuardScanner() {
       Alert.alert(
         "Off Duty",
         "You must be on duty to scan passes. Please start shift in Profile tab.",
-        [{ text: "OK", onPress: () => setScanned(false) }]
+        [{ text: "OK", onPress: () => setScanned(false) }],
       );
       return;
     }
@@ -187,7 +191,7 @@ export default function GuardScanner() {
         Alert.alert(
           "Invalid Pass",
           "This pass QR code is invalid or does not exist in our system.",
-          [{ text: "OK", onPress: () => setScanned(false) }]
+          [{ text: "OK", onPress: () => setScanned(false) }],
         );
         return;
       }
@@ -196,7 +200,7 @@ export default function GuardScanner() {
         Alert.alert(
           "Access Denied",
           `This pass current status is: ${pass.status}. Access is not approved.`,
-          [{ text: "OK", onPress: () => setScanned(false) }]
+          [{ text: "OK", onPress: () => setScanned(false) }],
         );
         return;
       }
@@ -208,7 +212,7 @@ export default function GuardScanner() {
         Alert.alert(
           "Pass Expired",
           `This pass was valid until ${validUntil.toLocaleDateString()}.`,
-          [{ text: "OK", onPress: () => setScanned(false) }]
+          [{ text: "OK", onPress: () => setScanned(false) }],
         );
         return;
       }
@@ -219,7 +223,7 @@ export default function GuardScanner() {
         Alert.alert(
           "Wrong Society",
           "This pass is registered for another residential society.",
-          [{ text: "OK", onPress: () => setScanned(false) }]
+          [{ text: "OK", onPress: () => setScanned(false) }],
         );
         return;
       }
@@ -240,7 +244,7 @@ export default function GuardScanner() {
             (t) =>
               t.name?.toLowerCase() === pass.tower_no?.toLowerCase() ||
               t.tower_id?.toLowerCase() === pass.tower_no?.toLowerCase() ||
-              t.name?.toLowerCase().includes(pass.tower_no?.toLowerCase())
+              t.name?.toLowerCase().includes(pass.tower_no?.toLowerCase()),
           );
         }
 
@@ -277,11 +281,14 @@ export default function GuardScanner() {
                         .eq("id", u.id)
                         .maybeSingle();
                       if (guestData?.notification_token) {
-                        return { ...u, notification_token: guestData.notification_token };
+                        return {
+                          ...u,
+                          notification_token: guestData.notification_token,
+                        };
                       }
                     }
                     return u;
-                  })
+                  }),
                 );
               }
             }
@@ -295,10 +302,9 @@ export default function GuardScanner() {
       setResidentFlat(matchedFlat);
       setResidentList(list);
       setVerificationModalVisible(true);
-
     } catch (err: any) {
       Alert.alert("Scan Error", err.message || "Failed to verify pass.", [
-        { text: "OK", onPress: () => setScanned(false) }
+        { text: "OK", onPress: () => setScanned(false) },
       ]);
     }
   };
@@ -309,14 +315,12 @@ export default function GuardScanner() {
 
     try {
       // 1. Log check-in in visitor_logs
-      const { error: logErr } = await supabase
-        .from("visitor_logs")
-        .insert({
-          pass_id: scannedPass.id,
-          logged_by: profile.id,
-          action_type: "Check-in",
-          gate_name: gateName,
-        });
+      const { error: logErr } = await supabase.from("visitor_logs").insert({
+        pass_id: scannedPass.id,
+        logged_by: profile.id,
+        action_type: "Check-in",
+        gate_name: gateName,
+      });
 
       if (logErr) throw logErr;
 
@@ -367,22 +371,26 @@ export default function GuardScanner() {
               },
             });
           } catch (err) {
-            console.warn(`Failed to send push notification to resident ${resident.full_name}:`, err);
+            console.warn(
+              `Failed to send push notification to resident ${resident.full_name}:`,
+              err,
+            );
           }
         }
 
         try {
-          await supabase
-            .from("push_notifications")
-            .insert({
-              user_id: resident.id,
-              title: "Visitor Checked In 🚪",
-              body: `${scannedPass.visitor_name} has checked in at the gate.`,
-              screen: "/resident",
-              status: "Sent",
-            });
+          await supabase.from("push_notifications").insert({
+            user_id: resident.id,
+            title: "Visitor Checked In 🚪",
+            body: `${scannedPass.visitor_name} has checked in at the gate.`,
+            screen: "/resident",
+            status: "Sent",
+          });
         } catch (dbNotifErr) {
-          console.warn(`Failed to log push notification for resident ${resident.full_name}:`, dbNotifErr);
+          console.warn(
+            `Failed to log push notification for resident ${resident.full_name}:`,
+            dbNotifErr,
+          );
         }
       }
 
@@ -412,17 +420,18 @@ export default function GuardScanner() {
           }
 
           try {
-            await supabase
-              .from("push_notifications")
-              .insert({
-                user_id: guestData.id,
-                title: "Pass Verified ✔️",
-                body: "Your pass has been scanned and verified at the gate.",
-                screen: "/request-pass",
-                status: "Sent",
-              });
+            await supabase.from("push_notifications").insert({
+              user_id: guestData.id,
+              title: "Pass Verified ✔️",
+              body: "Your pass has been scanned and verified at the gate.",
+              screen: "/request-pass",
+              status: "Sent",
+            });
           } catch (dbNotifErr) {
-            console.warn("Failed to log push notification for visitor:", dbNotifErr);
+            console.warn(
+              "Failed to log push notification for visitor:",
+              dbNotifErr,
+            );
           }
         }
       } catch (guestNotifErr) {
@@ -432,18 +441,26 @@ export default function GuardScanner() {
       Alert.alert(
         "Access Approved",
         `Visitor: ${scannedPass.visitor_name}\nType: ${scannedPass.designation}\nApartment: T-${scannedPass.tower_no}, F-${scannedPass.flat_no}\n\nEntry logged successfully.`,
-        [{ text: "OK", onPress: () => {
-          setVerificationModalVisible(false);
-          setScannedPass(null);
-          setResidentTower(null);
-          setResidentFlat(null);
-          setResidentList([]);
-          setScanned(false);
-          fetchRecentLogs();
-        }}]
+        [
+          {
+            text: "OK",
+            onPress: () => {
+              setVerificationModalVisible(false);
+              setScannedPass(null);
+              setResidentTower(null);
+              setResidentFlat(null);
+              setResidentList([]);
+              setScanned(false);
+              fetchRecentLogs();
+            },
+          },
+        ],
       );
     } catch (err: any) {
-      Alert.alert("Verification Error", err.message || "Failed to confirm check-in.");
+      Alert.alert(
+        "Verification Error",
+        err.message || "Failed to confirm check-in.",
+      );
     } finally {
       setActionProcessing(false);
     }
@@ -473,33 +490,49 @@ export default function GuardScanner() {
               Alert.alert(
                 "Pass Rejected",
                 "The pass has been successfully marked as rejected.",
-                [{ text: "OK", onPress: () => {
-                  setVerificationModalVisible(false);
-                  setScannedPass(null);
-                  setResidentTower(null);
-                  setResidentFlat(null);
-                  setResidentList([]);
-                  setScanned(false);
-                  fetchRecentLogs();
-                }}]
+                [
+                  {
+                    text: "OK",
+                    onPress: () => {
+                      setVerificationModalVisible(false);
+                      setScannedPass(null);
+                      setResidentTower(null);
+                      setResidentFlat(null);
+                      setResidentList([]);
+                      setScanned(false);
+                      fetchRecentLogs();
+                    },
+                  },
+                ],
               );
             } catch (err: any) {
-              Alert.alert("Reject Error", err.message || "Failed to reject pass.");
+              Alert.alert(
+                "Reject Error",
+                err.message || "Failed to reject pass.",
+              );
             } finally {
               setActionProcessing(false);
             }
-          }
-        }
-      ]
+          },
+        },
+      ],
     );
   };
 
   const handleManualRegister = async () => {
     if (!isOnDuty) {
-      Alert.alert("Off Duty", "You must be on duty to register visitors. Please start shift in Profile tab.");
+      Alert.alert(
+        "Off Duty",
+        "You must be on duty to register visitors. Please start shift in Profile tab.",
+      );
       return;
     }
-    if (!visitorName.trim() || !phone.trim() || !towerNo.trim() || !flatNo.trim()) {
+    if (
+      !visitorName.trim() ||
+      !phone.trim() ||
+      !towerNo.trim() ||
+      !flatNo.trim()
+    ) {
       Alert.alert("Incomplete Details", "Please fill in all required fields.");
       return;
     }
@@ -537,14 +570,12 @@ export default function GuardScanner() {
       if (passErr) throw passErr;
 
       // 2. Log in visitor_logs
-      const { error: logErr } = await supabase
-        .from("visitor_logs")
-        .insert({
-          pass_id: pass.id,
-          logged_by: profile.id,
-          action_type: "Check-in",
-          gate_name: gateName,
-        });
+      const { error: logErr } = await supabase.from("visitor_logs").insert({
+        pass_id: pass.id,
+        logged_by: profile.id,
+        action_type: "Check-in",
+        gate_name: gateName,
+      });
 
       if (logErr) throw logErr;
 
@@ -571,7 +602,7 @@ export default function GuardScanner() {
 
       Alert.alert("Visitor Registered", `Check-in recorded for ${visitorName}`);
       setModalVisible(false);
-      
+
       // Reset form
       setVisitorName("");
       setPhone("");
@@ -582,7 +613,10 @@ export default function GuardScanner() {
 
       fetchRecentLogs();
     } catch (err: any) {
-      Alert.alert("Registration Error", err.message || "Failed to register visitor.");
+      Alert.alert(
+        "Registration Error",
+        err.message || "Failed to register visitor.",
+      );
     } finally {
       setRegistering(false);
     }
@@ -606,45 +640,85 @@ export default function GuardScanner() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.badgeContainer}>
-            <MaterialIcons name="security" size={16} color={theme.colors.onSecondaryContainer} />
+            <MaterialIcons
+              name="security"
+              size={16}
+              color={theme.colors.onSecondaryContainer}
+            />
             <Text style={styles.badgeText}>SECURITY GATE</Text>
           </View>
-          <Text style={styles.headerTitle}>{profile?.fullName || "On-Duty Guard"}</Text>
+          <Text style={styles.headerTitle}>
+            {profile?.fullName || "On-Duty Guard"}
+          </Text>
         </View>
         <TouchableOpacity
           style={styles.refreshBtn}
           onPress={fetchRecentLogs}
           activeOpacity={0.7}
         >
-          <MaterialIcons name="refresh" size={22} color={theme.colors.primary} />
+          <MaterialIcons
+            name="refresh"
+            size={22}
+            color={theme.colors.primary}
+          />
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Gate Status notification block */}
         <View style={styles.statusNotifyRow}>
           <View style={styles.statusLeft}>
             <View style={styles.pulseDot} />
-            <Text style={styles.statusText}>Scanner Active: Main Security Gate</Text>
+            <Text style={styles.statusText}>
+              Scanner Active: Main Security Gate
+            </Text>
           </View>
-          <Text style={styles.gateLabel}>{profile?.societyName || "Greenwood Estate"}</Text>
+          <Text style={styles.gateLabel}>
+            {profile?.societyName || "Greenwood Estate"}
+          </Text>
         </View>
 
         {/* Camera Scanner View Area */}
         <View style={styles.scannerWrapper}>
           {!isOnDuty ? (
             <View style={styles.permissionBox}>
-              <MaterialIcons name="security" size={48} color={theme.colors.outline} />
-              <Text style={styles.permissionText}>You are currently Off Duty. You must start your shift to scan or register visitors.</Text>
-              <TouchableOpacity style={styles.permissionBtn} onPress={() => router.push("/guard/(tabs)/profile" as any)} activeOpacity={0.8}>
-                <Text style={styles.permissionBtnText}>Go to Profile (Start Shift)</Text>
+              <MaterialIcons
+                name="security"
+                size={48}
+                color={theme.colors.outline}
+              />
+              <Text style={styles.permissionText}>
+                You are currently Off Duty. You must start your shift to scan or
+                register visitors.
+              </Text>
+              <TouchableOpacity
+                style={styles.permissionBtn}
+                onPress={() => router.push("/guard/(tabs)/profile" as any)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.permissionBtnText}>
+                  Go to Profile (Start Shift)
+                </Text>
               </TouchableOpacity>
             </View>
           ) : !permission.granted ? (
             <View style={styles.permissionBox}>
-              <MaterialIcons name="photo-camera" size={48} color={theme.colors.outline} />
-              <Text style={styles.permissionText}>Camera permission is required to scan visitor pass QR codes.</Text>
-              <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission} activeOpacity={0.8}>
+              <MaterialIcons
+                name="photo-camera"
+                size={48}
+                color={theme.colors.outline}
+              />
+              <Text style={styles.permissionText}>
+                Camera permission is required to scan visitor pass QR codes.
+              </Text>
+              <TouchableOpacity
+                style={styles.permissionBtn}
+                onPress={requestPermission}
+                activeOpacity={0.8}
+              >
                 <Text style={styles.permissionBtnText}>Enable Camera</Text>
               </TouchableOpacity>
             </View>
@@ -657,8 +731,19 @@ export default function GuardScanner() {
                   onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
                 />
               ) : (
-                <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "#000", justifyContent: "center", alignItems: "center" }]}>
-                  <Text style={{ color: "#fff", ...theme.typography.bodyMd }}>Scanner paused</Text>
+                <View
+                  style={[
+                    StyleSheet.absoluteFillObject,
+                    {
+                      backgroundColor: "#000",
+                      justifyContent: "center",
+                      alignItems: "center",
+                    },
+                  ]}
+                >
+                  <Text style={{ color: "#fff", ...theme.typography.bodyMd }}>
+                    Scanner paused
+                  </Text>
                 </View>
               )}
 
@@ -689,14 +774,16 @@ export default function GuardScanner() {
                     color="rgba(134, 242, 228, 0.25)"
                   />
                 </View>
-                <Text style={styles.overlayLabel}>Position QR Code inside the square</Text>
+                <Text style={styles.overlayLabel}>
+                  Position QR Code inside the square
+                </Text>
               </View>
 
               {/* Float controls on Scanner */}
               <View style={styles.floatControls}>
                 <TouchableOpacity
                   style={styles.floatBtn}
-                  onPress={() => setScanning(prev => !prev)}
+                  onPress={() => setScanning((prev) => !prev)}
                 >
                   <MaterialIcons
                     name={scanning ? "pause" : "play-arrow"}
@@ -712,21 +799,31 @@ export default function GuardScanner() {
         {/* Manual Walk-in Section */}
         <View style={styles.manualSection}>
           <TouchableOpacity
-            style={[styles.manualBtn, !isOnDuty && { backgroundColor: theme.colors.outline }]}
+            style={[
+              styles.manualBtn,
+              !isOnDuty && { backgroundColor: theme.colors.outline },
+            ]}
             onPress={() => {
               if (isOnDuty) {
                 setModalVisible(true);
               } else {
-                Alert.alert("Off Duty", "You must be on duty to register visitors. Please start shift in Profile tab.");
+                Alert.alert(
+                  "Off Duty",
+                  "You must be on duty to register visitors. Please start shift in Profile tab.",
+                );
               }
             }}
             activeOpacity={0.9}
           >
-            <MaterialIcons name="person-add" size={22} color={theme.colors.onSecondary} />
+            <MaterialIcons
+              name="person-add"
+              size={22}
+              color={theme.colors.onSecondary}
+            />
             <Text style={styles.manualBtnText}>Register Walk-in Visitor</Text>
           </TouchableOpacity>
           <Text style={styles.manualSub}>
-            {isOnDuty 
+            {isOnDuty
               ? "No invite? Register the visitor manually with ID verification."
               : "You must be on duty to register walk-in visitors."}
           </Text>
@@ -736,13 +833,19 @@ export default function GuardScanner() {
         <View style={styles.recentSection}>
           <View style={styles.recentHeader}>
             <Text style={styles.recentTitle}>Recent Entries</Text>
-            <TouchableOpacity onPress={() => router.push("/guard/(tabs)/logs" as any)}>
+            <TouchableOpacity
+              onPress={() => router.push("/guard/(tabs)/logs" as any)}
+            >
               <Text style={styles.viewAllText}>View Log</Text>
             </TouchableOpacity>
           </View>
 
           {loadingLogs ? (
-            <ActivityIndicator size="small" color={theme.colors.secondary} style={{ padding: 20 }} />
+            <ActivityIndicator
+              size="small"
+              color={theme.colors.secondary}
+              style={{ padding: 20 }}
+            />
           ) : (
             <View style={styles.logsList}>
               {recentLogs.length > 0 ? (
@@ -752,15 +855,30 @@ export default function GuardScanner() {
                   return (
                     <View key={log.id} style={styles.logCard}>
                       <View style={styles.logLeft}>
-                        <View style={[styles.logIconBox, { backgroundColor: isCheckin ? "rgba(0, 106, 97, 0.08)" : "rgba(186, 26, 26, 0.08)" }]}>
+                        <View
+                          style={[
+                            styles.logIconBox,
+                            {
+                              backgroundColor: isCheckin
+                                ? "rgba(0, 106, 97, 0.08)"
+                                : "rgba(186, 26, 26, 0.08)",
+                            },
+                          ]}
+                        >
                           <MaterialIcons
                             name={isCheckin ? "login" : "logout"}
                             size={20}
-                            color={isCheckin ? theme.colors.secondary : theme.colors.error}
+                            color={
+                              isCheckin
+                                ? theme.colors.secondary
+                                : theme.colors.error
+                            }
                           />
                         </View>
                         <View>
-                          <Text style={styles.logName}>{p?.visitor_name || "Guest"}</Text>
+                          <Text style={styles.logName}>
+                            {p?.visitor_name || "Guest"}
+                          </Text>
                           <Text style={styles.logSub}>
                             Flat {p?.tower_no}-{p?.flat_no} • {p?.designation}
                           </Text>
@@ -771,10 +889,13 @@ export default function GuardScanner() {
                           <Text style={styles.verifiedBadgeText}>Verified</Text>
                         </View>
                         <Text style={styles.logTime}>
-                          {new Date(log.created_at).toLocaleTimeString("en-US", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                          {new Date(log.created_at).toLocaleTimeString(
+                            "en-US",
+                            {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            },
+                          )}
                         </Text>
                       </View>
                     </View>
@@ -782,8 +903,14 @@ export default function GuardScanner() {
                 })
               ) : (
                 <View style={styles.emptyLogs}>
-                  <MaterialIcons name="assignment" size={32} color={theme.colors.outline} />
-                  <Text style={styles.emptyLogsText}>No recent scans logged at this gate.</Text>
+                  <MaterialIcons
+                    name="assignment"
+                    size={32}
+                    color={theme.colors.outline}
+                  />
+                  <Text style={styles.emptyLogsText}>
+                    No recent scans logged at this gate.
+                  </Text>
                 </View>
               )}
             </View>
@@ -810,63 +937,107 @@ export default function GuardScanner() {
         <View style={styles.verificationModalOverlay}>
           <View style={styles.verificationModalContent}>
             <View style={styles.verificationModalHeader}>
-              <MaterialIcons name="fact-check" size={26} color={theme.colors.primary} />
-              <Text style={styles.verificationModalTitle}>Verify Visitor Entry</Text>
+              <MaterialIcons
+                name="fact-check"
+                size={26}
+                color={theme.colors.primary}
+              />
+              <Text style={styles.verificationModalTitle}>
+                Verify Visitor Entry
+              </Text>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.verificationScroll}>
-              
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.verificationScroll}
+            >
               {/* Visitor Details Card */}
-              <Text style={styles.sectionHeader}>VISITOR INFORMATION (SCANNED)</Text>
+              <Text style={styles.sectionHeader}>
+                VISITOR INFORMATION (SCANNED)
+              </Text>
               <View style={styles.infoCard}>
                 <View style={styles.infoRow}>
-                  <MaterialIcons name="person" size={20} color={theme.colors.secondary} />
+                  <MaterialIcons
+                    name="person"
+                    size={20}
+                    color={theme.colors.secondary}
+                  />
                   <View style={styles.infoTextContainer}>
                     <Text style={styles.infoLabel}>Visitor Name</Text>
-                    <Text style={styles.infoVal}>{scannedPass?.visitor_name || "N/A"}</Text>
+                    <Text style={styles.infoVal}>
+                      {scannedPass?.visitor_name || "N/A"}
+                    </Text>
                   </View>
                 </View>
 
                 <View style={styles.infoRow}>
-                  <MaterialIcons name="phone" size={20} color={theme.colors.secondary} />
+                  <MaterialIcons
+                    name="phone"
+                    size={20}
+                    color={theme.colors.secondary}
+                  />
                   <View style={styles.infoTextContainer}>
                     <Text style={styles.infoLabel}>Phone Number</Text>
-                    <Text style={styles.infoVal}>{scannedPass?.visitor_phone || "N/A"}</Text>
+                    <Text style={styles.infoVal}>
+                      {scannedPass?.visitor_phone || "N/A"}
+                    </Text>
                   </View>
                 </View>
 
                 <View style={styles.infoRow}>
-                  <MaterialIcons name="email" size={20} color={theme.colors.secondary} />
+                  <MaterialIcons
+                    name="email"
+                    size={20}
+                    color={theme.colors.secondary}
+                  />
                   <View style={styles.infoTextContainer}>
                     <Text style={styles.infoLabel}>Email Address</Text>
-                    <Text style={styles.infoVal}>{scannedPass?.visitor_email || "N/A"}</Text>
+                    <Text style={styles.infoVal}>
+                      {scannedPass?.visitor_email || "N/A"}
+                    </Text>
                   </View>
                 </View>
 
                 <View style={styles.infoRow}>
-                  <MaterialIcons name="label" size={20} color={theme.colors.secondary} />
+                  <MaterialIcons
+                    name="label"
+                    size={20}
+                    color={theme.colors.secondary}
+                  />
                   <View style={styles.infoTextContainer}>
                     <Text style={styles.infoLabel}>Purpose / Role</Text>
-                    <Text style={[styles.infoVal, styles.designationTag]}>{scannedPass?.designation || "Guest"}</Text>
+                    <Text style={[styles.infoVal, styles.designationTag]}>
+                      {scannedPass?.designation || "Guest"}
+                    </Text>
                   </View>
                 </View>
 
                 <View style={styles.infoRow}>
-                  <MaterialIcons name="meeting-room" size={20} color={theme.colors.secondary} />
+                  <MaterialIcons
+                    name="meeting-room"
+                    size={20}
+                    color={theme.colors.secondary}
+                  />
                   <View style={styles.infoTextContainer}>
                     <Text style={styles.infoLabel}>Destination Flat</Text>
-                    <Text style={styles.infoVal}>Tower {scannedPass?.tower_no}, Flat {scannedPass?.flat_no}</Text>
+                    <Text style={styles.infoVal}>
+                      Tower {scannedPass?.tower_no}, Flat {scannedPass?.flat_no}
+                    </Text>
                   </View>
                 </View>
               </View>
 
               {/* Resident Verification Card */}
-              <Text style={styles.sectionHeader}>APPROVED RESIDENT DETAILS</Text>
+              <Text style={styles.sectionHeader}>
+                APPROVED RESIDENT DETAILS
+              </Text>
               {residentFlat ? (
                 <View style={[styles.infoCard, styles.verifiedResidentCard]}>
                   <View style={styles.statusBadgeSuccess}>
                     <MaterialIcons name="verified" size={14} color="#006a61" />
-                    <Text style={styles.statusBadgeTextSuccess}>Resident Exists & Verified</Text>
+                    <Text style={styles.statusBadgeTextSuccess}>
+                      Resident Exists & Verified
+                    </Text>
                   </View>
 
                   <View style={styles.infoRow}>
@@ -874,28 +1045,52 @@ export default function GuardScanner() {
                     <View style={styles.infoTextContainer}>
                       <Text style={styles.infoLabel}>Matched Address</Text>
                       <Text style={styles.infoVal}>
-                        Tower {residentTower?.name || scannedPass?.tower_no}, Flat {residentFlat?.flat_number}
+                        Tower {residentTower?.name || scannedPass?.tower_no},
+                        Flat {residentFlat?.flat_number}
                       </Text>
                     </View>
                   </View>
 
                   {residentList.length > 0 ? (
                     residentList.map((res, index) => (
-                      <View key={res.id} style={[styles.infoRow, index > 0 && styles.infoRowDivider]}>
-                        <MaterialIcons name="account-circle" size={20} color="#006a61" />
+                      <View
+                        key={res.id}
+                        style={[
+                          styles.infoRow,
+                          index > 0 && styles.infoRowDivider,
+                        ]}
+                      >
+                        <MaterialIcons
+                          name="account-circle"
+                          size={20}
+                          color="#006a61"
+                        />
                         <View style={styles.infoTextContainer}>
                           <Text style={styles.infoLabel}>Resident Name</Text>
                           <Text style={styles.infoVal}>{res.full_name}</Text>
-                          <Text style={styles.infoSubText}>{res.phone} • {res.email}</Text>
+                          <Text style={styles.infoSubText}>
+                            {res.phone} • {res.email}
+                          </Text>
                         </View>
                       </View>
                     ))
                   ) : (
                     <View style={styles.infoRow}>
-                      <MaterialIcons name="warning" size={20} color={theme.colors.error} />
+                      <MaterialIcons
+                        name="warning"
+                        size={20}
+                        color={theme.colors.error}
+                      />
                       <View style={styles.infoTextContainer}>
                         <Text style={styles.infoLabel}>Resident Profile</Text>
-                        <Text style={[styles.infoVal, { color: theme.colors.error }]}>No registered profile in flat</Text>
+                        <Text
+                          style={[
+                            styles.infoVal,
+                            { color: theme.colors.error },
+                          ]}
+                        >
+                          No registered profile in flat
+                        </Text>
                       </View>
                     </View>
                   )}
@@ -903,24 +1098,32 @@ export default function GuardScanner() {
               ) : (
                 <View style={[styles.infoCard, styles.mismatchResidentCard]}>
                   <View style={styles.statusBadgeError}>
-                    <MaterialIcons name="report-problem" size={14} color={theme.colors.error} />
-                    <Text style={styles.statusBadgeTextError}>MISMATCH / NOT FOUND</Text>
+                    <MaterialIcons
+                      name="report-problem"
+                      size={14}
+                      color={theme.colors.error}
+                    />
+                    <Text style={styles.statusBadgeTextError}>
+                      MISMATCH / NOT FOUND
+                    </Text>
                   </View>
                   <Text style={styles.mismatchText}>
-                    This flat ({scannedPass?.tower_no} - {scannedPass?.flat_no}) does not exist in the {profile?.societyName || "society"} directory or has not been registered yet.
+                    This flat ({scannedPass?.tower_no} - {scannedPass?.flat_no})
+                    does not exist in the {profile?.societyName || "society"}{" "}
+                    directory or has not been registered yet.
                   </Text>
                 </View>
               )}
-
             </ScrollView>
 
             {/* Action Buttons */}
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={[
-                  styles.actionBtn, 
-                  styles.verifyBtn, 
-                  (!residentFlat || actionProcessing) && styles.actionBtnDisabled
+                  styles.actionBtn,
+                  styles.verifyBtn,
+                  (!residentFlat || actionProcessing) &&
+                  styles.actionBtnDisabled,
                 ]}
                 onPress={handleConfirmVerify}
                 disabled={!residentFlat || actionProcessing}
@@ -930,19 +1133,33 @@ export default function GuardScanner() {
                   <ActivityIndicator size="small" color="#ffffff" />
                 ) : (
                   <>
-                    <MaterialIcons name="check-circle" size={20} color="#ffffff" />
-                    <Text style={styles.actionBtnText}>Verified & Check-in</Text>
+                    <MaterialIcons
+                      name="check-circle"
+                      size={20}
+                      color="#ffffff"
+                    />
+                    <Text style={styles.actionBtnText}>
+                      Verified & Check-in
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.actionBtn, styles.rejectBtn, actionProcessing && styles.actionBtnDisabled]}
+                style={[
+                  styles.actionBtn,
+                  styles.rejectBtn,
+                  actionProcessing && styles.actionBtnDisabled,
+                ]}
                 onPress={handleRejectPass}
                 disabled={actionProcessing}
                 activeOpacity={0.8}
               >
-                <MaterialIcons name="cancel" size={20} color={theme.colors.error} />
+                <MaterialIcons
+                  name="cancel"
+                  size={20}
+                  color={theme.colors.error}
+                />
                 <Text style={styles.rejectBtnText}>Reject / Mismatch Data</Text>
               </TouchableOpacity>
             </View>
@@ -965,11 +1182,18 @@ export default function GuardScanner() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Register Walk-in Guest</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <MaterialIcons name="close" size={24} color={theme.colors.primary} />
+                <MaterialIcons
+                  name="close"
+                  size={24}
+                  color={theme.colors.primary}
+                />
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.formContainer}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.formContainer}
+            >
               {/* Form Input fields */}
               <Text style={styles.inputLabel}>Visitor Full Name *</Text>
               <TextInput
@@ -997,10 +1221,18 @@ export default function GuardScanner() {
                   return (
                     <TouchableOpacity
                       key={t}
-                      style={[styles.typeChip, selected && styles.typeChipSelected]}
+                      style={[
+                        styles.typeChip,
+                        selected && styles.typeChipSelected,
+                      ]}
                       onPress={() => setDesignation(t)}
                     >
-                      <Text style={[styles.typeChipText, selected && styles.typeChipTextSelected]}>
+                      <Text
+                        style={[
+                          styles.typeChipText,
+                          selected && styles.typeChipTextSelected,
+                        ]}
+                      >
                         {t}
                       </Text>
                     </TouchableOpacity>
@@ -1042,7 +1274,11 @@ export default function GuardScanner() {
               />
 
               {registering ? (
-                <ActivityIndicator size="small" color={theme.colors.secondary} style={{ marginTop: 24 }} />
+                <ActivityIndicator
+                  size="small"
+                  color={theme.colors.secondary}
+                  style={{ marginTop: 24 }}
+                />
               ) : (
                 <TouchableOpacity
                   style={styles.submitBtn}
@@ -1632,12 +1868,14 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     flex: 1,
-    height: 48,
+    minHeight: 48,
     borderRadius: 12,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
   },
   verifyBtn: {
     backgroundColor: theme.colors.secondary,
@@ -1654,10 +1892,14 @@ const styles = StyleSheet.create({
     ...theme.typography.button,
     color: "#ffffff",
     fontWeight: "700",
+    textAlign: "center",
+    flexShrink: 1,
   },
   rejectBtnText: {
     ...theme.typography.button,
     color: theme.colors.error,
     fontWeight: "700",
+    textAlign: "center",
+    flexShrink: 1,
   },
 });

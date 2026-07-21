@@ -16,6 +16,7 @@ export interface ResidentProfile {
   towerName?: string;
   towerId?: string;
   flatName?: string;
+  avatarUrl?: string;
 }
 
 interface ProfileState {
@@ -79,6 +80,7 @@ export const useProfileStore = create<ProfileState>((set) => ({
               full_name: guestData.full_name,
               email: guestData.email,
               phone: guestData.phone,
+              avatar_url: guestData.avatar_url,
               role: "Resident",
             } as any;
           }
@@ -119,6 +121,7 @@ export const useProfileStore = create<ProfileState>((set) => ({
             towerName,
             towerId,
             flatName,
+            avatarUrl: profileData.avatar_url || undefined,
           };
 
           // Save synced profile to AsyncStorage and Zustand state

@@ -57,6 +57,8 @@ export const PassDetailModal: React.FC<PassDetailModalProps> = ({
 
   const statusColors = getStatusStyle(pass.status);
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${pass.id}`;
+  console.log(pass.id)
+  console.log(qrUrl)
 
   return (
     <Modal

@@ -338,12 +338,13 @@ export default function GuardLogs() {
             .from("guard_assignments")
             .select("gate_name")
             .eq("guard_id", profile.id)
-            .maybeSingle();
+            .order("created_at", { ascending: false })
+            .limit(1);
 
           if (error) throw error;
-          if (data) {
+          if (data && data.length > 0) {
             setIsOnDuty(true);
-            setGateName(data.gate_name || "Main Gate");
+            setGateName(data[0].gate_name || "Main Gate");
           } else {
             setIsOnDuty(false);
           }

@@ -26,6 +26,23 @@ export default function WelcomeScreen() {
     loadProfile();
   }, []);
 
+  // Animation for Get Started button hover/press scale
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!isLoadingProfile && profile) {
+      if (profile.role === "Resident") {
+        router.replace("/resident" as any);
+      } else if (profile.role === "Guard") {
+        router.replace("/guard" as any);
+      } else if (profile.role === "Admin") {
+        router.replace("/admin" as any);
+      } else {
+        router.replace("/request-pass" as any);
+      }
+    }
+  }, [profile, isLoadingProfile]);
+
   // // While profile is being loaded from storage, show a spinner
   if (isLoadingProfile) {
     return (
@@ -41,22 +58,6 @@ export default function WelcomeScreen() {
       </View>
     );
   }
-  useEffect(() => {
-    if (!isLoadingProfile && profile) {
-      if (profile.role === "Resident") {
-        router.replace("/resident" as any);
-      } else if (profile.role === "Guard") {
-        router.replace("/guard" as any);
-      } else if (profile.role === "Admin") {
-        router.replace("/admin" as any);
-      } else {
-        router.replace("/request-pass" as any);
-      }
-    }
-  }, [profile, isLoadingProfile]);
-
-  // Animation for Get Started button hover/press scale
-  const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
