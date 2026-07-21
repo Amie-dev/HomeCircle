@@ -1,175 +1,50 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, Alert, Image, ActivityIndicator } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { MaterialIcons } from "@expo/vector-icons";
-import { useQueryClient } from "@tanstack/react-query";
 import { theme } from "../../../theme";
 import { useProfileStore } from "../../../store/useProfileStore";
-import { useAmenityBookings, useCreateBooking, useAmenities } from "../../../hooks/useAmenityBookings";
-import { supabase } from "../../../../utils/supabase";
+import { useAmenityBookings, useAmenities } from "../../../hooks/useAmenityBookings";
+import { BookingModal } from "../../../components/BookingModal";
 
 export default function AmenityBookingScreen() {
   const router = useRouter();
-  const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
   const { profile } = useProfileStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
-  const [seeding, setSeeding] = useState(false);
+
+  // Booking Modal States
+  const [selectedAmenity, setSelectedAmenity] = useState<any | null>(null);
+  const [showBookingModal, setShowBookingModal] = useState(false);
 
   // Fetch bookings list for the respective resident
   const { data: bookingsList = [], isLoading } = useAmenityBookings(profile?.id);
   const { data: dbAmenities = [], isLoading: isLoadingAmenities } = useAmenities(profile?.societyId);
-  const createBookingMutation = useCreateBooking();
-
-  // Auto-seed database with default amenities if none exist
-  useEffect(() => {
-    const seedAmenities = async () => {
-      if (!profile?.societyId || isLoadingAmenities || dbAmenities.length > 0 || seeding) return;
-      
-      setSeeding(true);
-      try {
-        console.log("DEBUG: Database amenities list is empty. Auto-seeding default amenities into Supabase...");
-        const seedData = [
-          {
-            society_id: profile.societyId,
-            name: "Badminton Court 1",
-            description: "Clubhouse, Level 2",
-            opening_time: "06:00:00",
-            closing_time: "22:00:00",
-            max_capacity: 4,
-            booking_enabled: true
-          },
-          {
-            society_id: profile.societyId,
-            name: "Infinity Pool",
-            description: "Terrace Hub, Level 5",
-            opening_time: "06:00:00",
-            closing_time: "20:00:00",
-            max_capacity: 15,
-            booking_enabled: false
-          },
-          {
-            society_id: profile.societyId,
-            name: "Community Hall",
-            description: "South Wing, Ground Floor",
-            opening_time: "09:00:00",
-            closing_time: "23:00:00",
-            max_capacity: 150,
-            booking_enabled: true
-          },
-          {
-            society_id: profile.societyId,
-            name: "High-Performance Gym",
-            description: "Clubhouse, Level 1",
-            opening_time: "05:00:00",
-            closing_time: "22:00:00",
-            max_capacity: 25,
-            booking_enabled: true
-          }
-        ];
-
-        const { error } = await supabase.from("amenities").insert(seedData);
-        if (error) {
-          console.warn("Seeding amenities failed:", error.message);
-        } else {
-          console.log("Seeding successful. Invaliding query key to refresh list from DB.");
-          queryClient.invalidateQueries({ queryKey: ["amenities", profile.societyId] });
-        }
-      } catch (err) {
-        console.error("Error auto-seeding amenities:", err);
-      } finally {
-        setSeeding(false);
-      }
-    };
-
-    seedAmenities();
-  }, [profile?.societyId, dbAmenities.length, isLoadingAmenities]);
 
   const categories = ["All", "Sports", "Leisure", "Wellness", "Events"];
 
-  const amenitiesData = [
-    {
-      id: "1",
-      title: "Badminton Court 1",
-      category: "Sports",
-      rating: "4.8",
-      location: "Clubhouse, Level 2",
-      status: "Available",
-      image: "https://lh3.googleusercontent.com/aida-public/AB6AXuBNBTlyZufV2PSP544pUl4t_eyxGZRCX06P1WhFmFAtpmI136l8NWLo5qBJJtlj9k3tVJ5GT0Xobf3gNTHUvZ9bT6xJAXwaC--fsTz1VVzON3uWUqrNp8pVusaCNyg_3ofLTc8ptbf5slLMxmnBYOu7-fcyGmey-ruNI3sQL9PbnMm0c9tUw0ApGgaprE_EXLTxU53VYUlgmQ77-USepeK6uO1aQo-SZFky10djFL1WvbqzwkKeFXu36w",
-    },
-    {
-      id: "2",
-      title: "Infinity Pool",
-      category: "Leisure",
-      rating: "4.9",
-      location: "Terrace Hub, Level 5",
-      status: "Fully Booked",
-      image: "https://lh3.googleusercontent.com/aida-public/AB6AXuDns_XlCAtNQm0RhEVC2VkqGMoL9y3yGqEsT9XkaEAZh8SA1dOP-tH7WJ4MEf4A1MriZvCdhUnQ-Xwc6Xc0R4HYzwMXxs5_PSYp5E22yrVYsPLEn1vrO4GTnYJ60Pfq7b9ITd1s2nsl7lRV46G5XALzy2L_W4bZtMElAzxXFPqZH5cZHEpiz5dTylUZ9T8fDSI92DuP4ag0kA7aBNBSMnz_k-uSEGz8rYv7Nkcz6OUsCIGTzxvL8RZhnQ",
-    },
-    {
-      id: "3",
-      title: "Community Hall",
-      category: "Events",
-      rating: "4.6",
-      location: "South Wing, Ground Floor",
-      status: "Available",
-      image: "https://lh3.googleusercontent.com/aida-public/AB6AXuDgLK2YM9Up73pQVCxgLYHclzmFZaMXB6Fq9kkRUf9fo0lUg-Di_FIoRHeCz48dFiYcM8VLIuJepeIACMqzXKr1vRqd8pQBq2iG3bEOVTqD9kZyPBof--U_8_utzBJJGEWaEq_tzNeuondS_d6fdQXZ-xzVVh-uBWPudoSPZfMnBrsvzROod2sN7wzW-nnSgrh5XVvGSenIMmVCGTB97iHDzVf2lzIG3DWOcYiZIuTyvNigYl7dQgs4ng",
-    },
-    {
-      id: "4",
-      title: "High-Performance Gym",
-      category: "Wellness",
-      rating: "4.7",
-      location: "Clubhouse, Level 1",
-      status: "Closing Soon",
-      image: "https://lh3.googleusercontent.com/aida-public/AB6AXuCS0iqJaGhRdXnMQECzb5Kzm1DqSPUfp38EAYzbWfARzmWCAoVEoUqb81P1cKfE6NaR_izcrwgZA2dabvsNaIeGyLc8S-aTEjKLFh7B4Arc8RctBX3xn6rWxzeJ-nrmlPoEZ4assCsHBwGbO_jJFxOXCDyCrQIhlIsqMzF2RyE31zoo46HI2rws2f8ubdlHT5K_dh5MtQDIpksqhKUfFa4ssV5MbJObJJkbB_AOvTVApE0HOJzWbhF7sA",
-    }
-  ];
+  const amenitiesList = dbAmenities.map((item) => {
+    return {
+      id: item.id,
+      title: item.name,
+      category: item.category || "Leisure",
+      rating: item.rating?.toString() || "4.5",
+      location: item.location || item.description || "Society Clubhouse",
+      status: item.status || (item.booking_enabled ? "Available" : "Fully Booked"),
+      image: item.image_urls?.[0] || "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&auto=format&fit=crop&q=80",
+      maxCapacity: item.max_capacity,
+      openingTime: item.opening_time,
+      closingTime: item.closing_time,
+    };
+  });
 
-  const amenitiesList = dbAmenities.length > 0
-    ? dbAmenities.map((item) => {
-        const match = amenitiesData.find(
-          (m) => m.title.toLowerCase().trim() === item.name.toLowerCase().trim()
-        );
-        return {
-          id: item.id,
-          title: item.name,
-          category: match?.category || "Leisure",
-          rating: match?.rating || "4.5",
-          location: item.description || match?.location || "Society Clubhouse",
-          status: item.booking_enabled ? "Available" : "Fully Booked",
-          image: match?.image || "https://lh3.googleusercontent.com/aida-public/AB6AXuDgLK2YM9Up73pQVCxgLYHclzmFZaMXB6Fq9kkRUf9fo0lUg-Di_FIoRHeCz48dFiYcM8VLIuJepeIACMqzXKr1vRqd8pQBq2iG3bEOVTqD9kZyPBof--U_8_utzBJJGEWaEq_tzNeuondS_d6fdQXZ-xzVVh-uBWPudoSPZfMnBrsvzROod2sN7wzW-nnSgrh5XVvGSenIMmVCGTB97iHDzVf2lzIG3DWOcYiZIuTyvNigYl7dQgs4ng",
-        };
-      })
-    : amenitiesData;
-
-  const handleBookNow = (title: string) => {
-    if (!profile) return;
-    Alert.alert("Confirm Booking", `Do you want to book ${title}?`, [
-      {
-        text: "Confirm",
-        onPress: () => {
-          createBookingMutation.mutate({
-            user_id: profile.id,
-            society_id: profile.societyId || "00000000-0000-0000-0000-000000000000",
-            amenity_name: title,
-            booking_date: new Date().toISOString().split('T')[0],
-            start_time: "18:00",
-            end_time: "19:30",
-          }, {
-            onSuccess: () => {
-              Alert.alert("Success", `${title} has been booked!`);
-            },
-            onError: (err: any) => {
-              Alert.alert("Error booking", err.message || "Failed to book amenity.");
-            }
-          });
-        }
-      },
-      { text: "Cancel", style: "cancel" },
-    ]);
+  const handleBookNow = (amenity: any) => {
+    console.log("DEBUG: handleBookNow clicked, profile:", profile);
+    setSelectedAmenity(amenity);
+    setShowBookingModal(true);
   };
 
   const getStatusStyle = (status: string) => {
@@ -189,6 +64,14 @@ export default function AmenityBookingScreen() {
     const matchesCategory = selectedCategory === "All" || item.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
+
+  if (isLoading || isLoadingAmenities) {
+    return (
+      <SafeAreaView style={[styles.outerContainer, { justifyContent: "center", alignItems: "center" }]} edges={["top"]}>
+        <ActivityIndicator size="large" color={theme.colors.secondary} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.outerContainer} edges={["top"]}>
@@ -271,54 +154,61 @@ export default function AmenityBookingScreen() {
 
         {/* Facilities Bento List */}
         <View style={styles.facilitiesGrid}>
-          {filteredAmenities.map((item) => {
-            const statusStyle = getStatusStyle(item.status);
-            const isBooked = item.status === "Fully Booked";
+          {filteredAmenities.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <MaterialIcons name="event-busy" size={48} color={theme.colors.outline} style={{ marginBottom: 4 }} />
+              <Text style={styles.emptyText}>No amenities found matching your search or filters.</Text>
+            </View>
+          ) : (
+            filteredAmenities.map((item) => {
+              const statusStyle = getStatusStyle(item.status);
+              const isBooked = item.status === "Fully Booked";
 
-            return (
-              <View key={item.id} style={styles.facilityCard}>
-                <View style={styles.imageContainer}>
-                  <Image source={{ uri: item.image }} style={styles.facilityImage} />
-                  <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
-                    <Text style={[styles.statusText, { color: statusStyle.text }]}>{item.status}</Text>
+              return (
+                <View key={item.id} style={styles.facilityCard}>
+                  <View style={styles.imageContainer}>
+                    <Image source={{ uri: item.image }} style={styles.facilityImage} />
+                    <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
+                      <Text style={[styles.statusText, { color: statusStyle.text }]}>{item.status}</Text>
+                    </View>
                   </View>
-                </View>
 
-                <View style={styles.facilityDetails}>
-                  <View style={styles.cardHeaderRow}>
-                    <Text style={styles.facilityName}>{item.title}</Text>
-                    {item.rating && (
-                      <View style={styles.ratingRow}>
-                        <MaterialIcons name="star" size={14} color={theme.colors.onSurfaceVariant} />
-                        <Text style={styles.ratingText}>{item.rating}</Text>
-                      </View>
+                  <View style={styles.facilityDetails}>
+                    <View style={styles.cardHeaderRow}>
+                      <Text style={styles.facilityName}>{item.title}</Text>
+                      {item.rating && (
+                        <View style={styles.ratingRow}>
+                          <MaterialIcons name="star" size={14} color={theme.colors.onSurfaceVariant} />
+                          <Text style={styles.ratingText}>{item.rating}</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    <View style={styles.locationRow}>
+                      <MaterialIcons name="location-on" size={14} color={theme.colors.outline} />
+                      <Text style={styles.locationText}>{item.location}</Text>
+                    </View>
+
+                    {isBooked ? (
+                      <TouchableOpacity
+                        style={styles.secondaryBtn}
+                        onPress={() => Alert.alert(`${item.title} Schedule`, "Current slots are filled. Checking next opening slots...")}
+                      >
+                        <Text style={styles.secondaryBtnText}>View Schedule</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.primaryBtn}
+                        onPress={() => handleBookNow(item)}
+                      >
+                        <Text style={styles.primaryBtnText}>Book Now</Text>
+                      </TouchableOpacity>
                     )}
                   </View>
-
-                  <View style={styles.locationRow}>
-                    <MaterialIcons name="location-on" size={14} color={theme.colors.outline} />
-                    <Text style={styles.locationText}>{item.location}</Text>
-                  </View>
-
-                  {isBooked ? (
-                    <TouchableOpacity
-                      style={styles.secondaryBtn}
-                      onPress={() => Alert.alert("Infinity Pool Schedule", "Current slots are filled. Checking next opening slots...")}
-                    >
-                      <Text style={styles.secondaryBtnText}>View Schedule</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity
-                      style={styles.primaryBtn}
-                      onPress={() => handleBookNow(item.title)}
-                    >
-                      <Text style={styles.primaryBtnText}>Book Now</Text>
-                    </TouchableOpacity>
-                  )}
                 </View>
-              </View>
-            );
-          })}
+              );
+            })
+          )}
         </View>
 
         {/* Booking Rules Card */}
@@ -338,6 +228,14 @@ export default function AmenityBookingScreen() {
       <TouchableOpacity style={styles.fab} onPress={() => router.push("/request-pass" as any)}>
         <MaterialIcons name="qr-code-2" size={28} color={theme.colors.secondary} />
       </TouchableOpacity>
+
+      {/* Booking Modal */}
+      <BookingModal
+        visible={showBookingModal}
+        onClose={() => setShowBookingModal(false)}
+        amenity={selectedAmenity}
+        profile={profile}
+      />
     </SafeAreaView>
   );
 }
@@ -636,5 +534,20 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
     zIndex: 40,
+  },
+  emptyContainer: {
+    padding: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(198, 198, 205, 0.2)",
+    gap: 12,
+  },
+  emptyText: {
+    ...theme.typography.bodyMd,
+    color: theme.colors.outline,
+    textAlign: "center",
   },
 });

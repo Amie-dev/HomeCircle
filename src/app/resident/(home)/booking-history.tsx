@@ -41,6 +41,12 @@ export default function BookingHistoryScreen() {
   const [selectedBooking, setSelectedBooking] = useState<AmenityBooking | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<"All" | "Confirmed" | "Cancelled" | "Expired">("All");
+
+  const filteredBookings = bookingsList.filter((item) => {
+    if (selectedStatusFilter === "All") return true;
+    return item.status === selectedStatusFilter;
+  });
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -95,6 +101,8 @@ export default function BookingHistoryScreen() {
         return { bg: "rgba(0, 106, 97, 0.1)", text: theme.colors.secondary };
       case "Cancelled":
         return { bg: "rgba(186, 26, 26, 0.1)", text: theme.colors.error };
+      case "Expired":
+        return { bg: "rgba(118, 119, 125, 0.15)", text: theme.colors.outline };
       default:
         return { bg: "rgba(118, 119, 125, 0.1)", text: theme.colors.outline };
     }
@@ -128,6 +136,27 @@ export default function BookingHistoryScreen() {
         </View>
       </View>
 
+      {/* Status Filter Bar */}
+      <View style={styles.filterBarContainer}>
+        {["All", "Confirmed", "Cancelled", "Expired"].map((filter) => {
+          const isActive = selectedStatusFilter === filter;
+          let label = filter;
+          if (filter === "Confirmed") label = "Upcoming";
+
+          return (
+            <TouchableOpacity
+              key={filter}
+              style={[styles.filterTab, isActive && styles.filterTabActive]}
+              onPress={() => setSelectedStatusFilter(filter as any)}
+            >
+              <Text style={[styles.filterTabText, isActive && styles.filterTabTextActive]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.secondary} />
@@ -146,23 +175,31 @@ export default function BookingHistoryScreen() {
             />
           }
         >
-          {bookingsList.length === 0 ? (
+          {filteredBookings.length === 0 ? (
             <View style={styles.emptyContainer}>
               <MaterialIcons name="event-busy" size={64} color={theme.colors.outlineVariant} />
               <Text style={styles.emptyTitle}>No Bookings Found</Text>
               <Text style={styles.emptySubtitle}>
-                You haven't booked any amenities yet. Head back to book sports facilities or halls.
+                {selectedStatusFilter === "All"
+                  ? "You haven't booked any amenities yet. Head back to book sports facilities or halls."
+                  : `You don't have any ${
+                      selectedStatusFilter === "Confirmed"
+                        ? "upcoming"
+                        : selectedStatusFilter.toLowerCase()
+                    } bookings.`}
               </Text>
-              <TouchableOpacity
-                style={styles.backToBookBtn}
-                onPress={() => router.back()}
-              >
-                <Text style={styles.backToBookBtnText}>Browse Amenities</Text>
-              </TouchableOpacity>
+              {selectedStatusFilter === "All" && (
+                <TouchableOpacity
+                  style={styles.backToBookBtn}
+                  onPress={() => router.back()}
+                >
+                  <Text style={styles.backToBookBtnText}>Browse Amenities</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             <View style={styles.listContainer}>
-              {bookingsList.map((item) => {
+              {filteredBookings.map((item) => {
                 const statusColor = getStatusColor(item.status);
                 return (
                   <TouchableOpacity
@@ -341,6 +378,33 @@ export default function BookingHistoryScreen() {
 const styles = StyleSheet.create({
   outerContainer: {
     flex: 1,
+  },
+  filterBarContainer: {
+    flexDirection: "row",
+    backgroundColor: theme.colors.surface,
+    paddingHorizontal: theme.spacing.containerMarginMobile,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(198, 198, 205, 0.2)",
+    justifyContent: "space-between",
+  },
+  filterTab: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: theme.colors.surfaceContainerHigh,
+  },
+  filterTabActive: {
+    backgroundColor: theme.colors.primary,
+  },
+  filterTabText: {
+    ...theme.typography.button,
+    color: theme.colors.onSurfaceVariant,
+    fontSize: 13,
+  },
+  filterTabTextActive: {
+    color: "#ffffff",
+    fontWeight: "700",
   },
   topAppBar: {
     flexDirection: "row",

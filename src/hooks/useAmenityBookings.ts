@@ -6,6 +6,12 @@ export interface Amenity {
   society_id: string;
   name: string;
   description?: string;
+  category?: string;
+  rating?: number;
+  location?: string;
+  status?: string;
+  image_urls?: string[];
+  current_users?: number;
   opening_time: string;
   closing_time: string;
   max_capacity: number;
@@ -21,7 +27,8 @@ export interface AmenityBooking {
   booking_date: string;
   start_time: string;
   end_time: string;
-  status: 'Confirmed' | 'Cancelled';
+  status: 'Confirmed' | 'Cancelled' | 'Expired';
+  num_people?: number;
   created_at: string;
 }
 
