@@ -65,6 +65,22 @@ export default function GuardProfile() {
           .eq("guard_id", profile.id);
 
         if (error) throw error;
+
+        // Log to guardlogs
+        if (profile.societyId) {
+          try {
+            await supabase.from("guardlogs").insert({
+              guard_id: profile.id,
+              society_id: profile.societyId,
+              gate_name: activeGate || "Main Gate",
+              action_type: "Logout",
+              details: { action: "End Shift", time: new Date().toISOString() },
+            });
+          } catch (logErr) {
+            console.warn("Failed to insert guard log:", logErr);
+          }
+        }
+
         Alert.alert("Shift Ended", "You are now Off Duty.");
         setOnDuty(false);
         setActiveGate("");
@@ -80,6 +96,22 @@ export default function GuardProfile() {
           });
 
         if (error) throw error;
+
+        // Log to guardlogs
+        if (profile.societyId) {
+          try {
+            await supabase.from("guardlogs").insert({
+              guard_id: profile.id,
+              society_id: profile.societyId,
+              gate_name: "Main Gate",
+              action_type: "Login",
+              details: { action: "Start Shift", time: new Date().toISOString() },
+            });
+          } catch (logErr) {
+            console.warn("Failed to insert guard log:", logErr);
+          }
+        }
+
         Alert.alert("Shift Started", "You are now On Duty at Main Gate.");
         setOnDuty(true);
         setActiveGate("Main Gate");
@@ -105,10 +137,24 @@ export default function GuardProfile() {
         onPress: async () => {
           // If on duty, clear assignment first
           if (onDuty && profile?.id) {
-            await supabase
-              .from("guard_assignments")
-              .delete()
-              .eq("guard_id", profile.id);
+            try {
+              await supabase
+                .from("guard_assignments")
+                .delete()
+                .eq("guard_id", profile.id);
+
+              if (profile.societyId) {
+                await supabase.from("guardlogs").insert({
+                  guard_id: profile.id,
+                  society_id: profile.societyId,
+                  gate_name: activeGate || "Main Gate",
+                  action_type: "Logout",
+                  details: { action: "Sign Out", time: new Date().toISOString() },
+                });
+              }
+            } catch (err) {
+              console.warn("Failed to clear assignment or log out from guard assignments/logs:", err);
+            }
           }
           await clearProfile();
           router.replace("/get-started" as any);

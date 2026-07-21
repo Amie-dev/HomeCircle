@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -10,6 +10,7 @@ import {
   Modal,
   Alert,
 } from "react-native";
+import { useFocusEffect } from "expo-router";
 import { sendPushNotification } from "../../../../utils/notificationService";
 import { getPushToken } from "../../../../utils/pushToken";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -34,28 +35,7 @@ export default function GuardLogs() {
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [checkoutProcessing, setCheckoutProcessing] = useState(false);
   const [gateName, setGateName] = useState("Main Gate");
-
-  // Fetch guard active gate name if possible
-  useEffect(() => {
-    const fetchActiveGate = async () => {
-      if (!profile?.id) return;
-      try {
-        const { data, error } = await supabase
-          .from("guard_assignments")
-          .select("gate_name")
-          .eq("guard_id", profile.id)
-          .maybeSingle();
-
-        if (error) throw error;
-        if (data?.gate_name) {
-          setGateName(data.gate_name);
-        }
-      } catch (err: any) {
-        console.error("Error fetching gate name in logs:", err.message);
-      }
-    };
-    fetchActiveGate();
-  }, [profile?.id]);
+  const [isOnDuty, setIsOnDuty] = useState(false);
 
   // Sync push notification token on login/mount
   useEffect(() => {
@@ -156,6 +136,10 @@ export default function GuardLogs() {
   };
 
   const handleLogCheckout = async () => {
+    if (!isOnDuty) {
+      Alert.alert("Off Duty", "You must be on duty to record check-outs. Please start shift in Profile tab.");
+      return;
+    }
     const p = selectedLog?.requestpasses;
     if (!p || !profile?.id) return;
 
@@ -172,6 +156,27 @@ export default function GuardLogs() {
         });
 
       if (logErr) throw logErr;
+
+      // Log to guardlogs
+      if (profile.societyId) {
+        try {
+          await supabase.from("guardlogs").insert({
+            guard_id: profile.id,
+            society_id: profile.societyId,
+            gate_name: gateName || "Main Gate",
+            action_type: "Scan",
+            details: {
+              action: "Visitor Checkout",
+              pass_id: p.id,
+              visitor_name: p.visitor_name,
+              designation: p.designation,
+              type: "Check-out",
+            },
+          });
+        } catch (logErr) {
+          console.warn("Failed to write to guardlogs on checkout:", logErr);
+        }
+      }
 
       // 2. Fetch matched residents of the destination flat to notify them
       let residentList: any[] = [];
@@ -324,11 +329,35 @@ export default function GuardLogs() {
     }
   };
 
-  useEffect(() => {
-    if (profile?.societyId) {
-      fetchLogs();
-    }
-  }, [profile?.societyId]);
+  useFocusEffect(
+    useCallback(() => {
+      const checkDutyStatus = async () => {
+        if (!profile?.id) return;
+        try {
+          const { data, error } = await supabase
+            .from("guard_assignments")
+            .select("gate_name")
+            .eq("guard_id", profile.id)
+            .maybeSingle();
+
+          if (error) throw error;
+          if (data) {
+            setIsOnDuty(true);
+            setGateName(data.gate_name || "Main Gate");
+          } else {
+            setIsOnDuty(false);
+          }
+        } catch (err: any) {
+          console.error("Error checking duty status in logs:", err.message);
+        }
+      };
+
+      checkDutyStatus();
+      if (profile?.societyId) {
+        fetchLogs();
+      }
+    }, [profile?.id, profile?.societyId])
+  );
 
   const filteredLogs = logs.filter((log) => {
     const p = log.requestpasses;
@@ -568,21 +597,39 @@ export default function GuardLogs() {
 
                             {/* Log Checkout button (if present) */}
                             {!isExited && (
-                              <TouchableOpacity
-                                style={[styles.checkoutBtn, checkoutProcessing && { opacity: 0.7 }]}
-                                onPress={handleLogCheckout}
-                                disabled={checkoutProcessing}
-                                activeOpacity={0.8}
-                              >
-                                {checkoutProcessing ? (
-                                  <ActivityIndicator size="small" color="#ffffff" />
-                                ) : (
-                                  <>
-                                    <MaterialIcons name="logout" size={18} color="#ffffff" />
-                                    <Text style={styles.checkoutBtnText}>Log Check-out / Exit</Text>
-                                  </>
+                              <View style={{ width: "100%" }}>
+                                <TouchableOpacity
+                                  style={[
+                                    styles.checkoutBtn, 
+                                    (checkoutProcessing || !isOnDuty) && { opacity: 0.7, backgroundColor: theme.colors.outline }
+                                  ]}
+                                  onPress={handleLogCheckout}
+                                  disabled={checkoutProcessing || !isOnDuty}
+                                  activeOpacity={0.8}
+                                >
+                                  {checkoutProcessing ? (
+                                    <ActivityIndicator size="small" color="#ffffff" />
+                                  ) : (
+                                    <>
+                                      <MaterialIcons name="logout" size={18} color="#ffffff" />
+                                      <Text style={styles.checkoutBtnText}>
+                                        {isOnDuty ? "Log Check-out / Exit" : "On Duty Required"}
+                                      </Text>
+                                    </>
+                                  )}
+                                </TouchableOpacity>
+                                {!isOnDuty && (
+                                  <Text style={{
+                                    color: theme.colors.error,
+                                    fontSize: 11,
+                                    textAlign: "center",
+                                    marginTop: 4,
+                                    fontWeight: "600"
+                                  }}>
+                                    You must be on duty to record check-outs.
+                                  </Text>
                                 )}
-                              </TouchableOpacity>
+                              </View>
                             )}
                           </View>
                         );

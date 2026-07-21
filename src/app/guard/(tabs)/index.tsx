@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -13,7 +13,7 @@ import {
   Platform,
   KeyboardAvoidingView,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { MaterialIcons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -53,29 +53,8 @@ export default function GuardScanner() {
   const [recentLogs, setRecentLogs] = useState<any[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [gateName, setGateName] = useState("Main Gate");
-
-  useEffect(() => {
-    const fetchActiveGate = async () => {
-      if (!profile?.id) return;
-      try {
-        const { data, error } = await supabase
-          .from("guard_assignments")
-          .select("gate_name")
-          .eq("guard_id", profile.id)
-          .order("created_at", { ascending: false })
-          .limit(1);
-
-        if (error) throw error;
-        if (data && data.length > 0 && data[0]?.gate_name) {
-          setGateName(data[0].gate_name);
-        }
-      } catch (err: any) {
-        console.error("Error fetching guard assignment gate name:", err.message);
-      }
-    };
-
-    fetchActiveGate();
-  }, [profile?.id]);
+  const [isOnDuty, setIsOnDuty] = useState(false);
+  const [checkingDuty, setCheckingDuty] = useState(true);
 
   const scanLineAnim = useRef(new Animated.Value(0)).current;
 
@@ -137,11 +116,40 @@ export default function GuardScanner() {
     }
   };
 
-  useEffect(() => {
-    if (profile?.societyId) {
-      fetchRecentLogs();
-    }
-  }, [profile?.societyId]);
+  useFocusEffect(
+    useCallback(() => {
+      const checkDutyAndGate = async () => {
+        if (!profile?.id) {
+          setCheckingDuty(false);
+          return;
+        }
+        try {
+          const { data, error } = await supabase
+            .from("guard_assignments")
+            .select("gate_name")
+            .eq("guard_id", profile.id)
+            .maybeSingle();
+
+          if (error) throw error;
+          if (data) {
+            setIsOnDuty(true);
+            setGateName(data.gate_name || "Main Gate");
+          } else {
+            setIsOnDuty(false);
+          }
+        } catch (err: any) {
+          console.error("Error checking duty status:", err.message);
+        } finally {
+          setCheckingDuty(false);
+        }
+      };
+
+      checkDutyAndGate();
+      if (profile?.societyId) {
+        fetchRecentLogs();
+      }
+    }, [profile?.id, profile?.societyId])
+  );
 
   const handleBarcodeScanned = async ({ data }: { data: string }) => {
     if (scanned) return;
@@ -151,6 +159,15 @@ export default function GuardScanner() {
       Alert.alert(
         "Access Denied",
         "Your guard account is pending verification by the society admin.",
+        [{ text: "OK", onPress: () => setScanned(false) }]
+      );
+      return;
+    }
+
+    if (!isOnDuty) {
+      Alert.alert(
+        "Off Duty",
+        "You must be on duty to scan passes. Please start shift in Profile tab.",
         [{ text: "OK", onPress: () => setScanned(false) }]
       );
       return;
@@ -315,6 +332,27 @@ export default function GuardScanner() {
 
       if (updateErr) throw updateErr;
 
+      // Log to guardlogs
+      if (profile.societyId) {
+        try {
+          await supabase.from("guardlogs").insert({
+            guard_id: profile.id,
+            society_id: profile.societyId,
+            gate_name: gateName || "Main Gate",
+            action_type: "Scan",
+            details: {
+              action: "Verify Pass",
+              pass_id: scannedPass.id,
+              visitor_name: scannedPass.visitor_name,
+              designation: scannedPass.designation,
+              type: "Check-in",
+            },
+          });
+        } catch (logErr) {
+          console.warn("Failed to write to guardlogs:", logErr);
+        }
+      }
+
       // 3. Notify flat admin/residents of the check-in
       for (const resident of residentList) {
         if (resident.notification_token) {
@@ -457,6 +495,10 @@ export default function GuardScanner() {
   };
 
   const handleManualRegister = async () => {
+    if (!isOnDuty) {
+      Alert.alert("Off Duty", "You must be on duty to register visitors. Please start shift in Profile tab.");
+      return;
+    }
     if (!visitorName.trim() || !phone.trim() || !towerNo.trim() || !flatNo.trim()) {
       Alert.alert("Incomplete Details", "Please fill in all required fields.");
       return;
@@ -506,6 +548,27 @@ export default function GuardScanner() {
 
       if (logErr) throw logErr;
 
+      // Log to guardlogs
+      if (profile.societyId) {
+        try {
+          await supabase.from("guardlogs").insert({
+            guard_id: profile.id,
+            society_id: profile.societyId,
+            gate_name: gateName || "Main Gate",
+            action_type: "Scan",
+            details: {
+              action: "Manual Walk-in",
+              pass_id: pass.id,
+              visitor_name: visitorName.trim(),
+              designation: designation,
+              type: "Check-in",
+            },
+          });
+        } catch (logErr) {
+          console.warn("Failed to write to guardlogs:", logErr);
+        }
+      }
+
       Alert.alert("Visitor Registered", `Check-in recorded for ${visitorName}`);
       setModalVisible(false);
       
@@ -525,8 +588,8 @@ export default function GuardScanner() {
     }
   };
 
-  if (!permission) {
-    // Camera permissions are still loading.
+  if (checkingDuty || !permission) {
+    // Camera permissions or duty status are still loading.
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={theme.colors.secondary} />
@@ -569,7 +632,15 @@ export default function GuardScanner() {
 
         {/* Camera Scanner View Area */}
         <View style={styles.scannerWrapper}>
-          {!permission.granted ? (
+          {!isOnDuty ? (
+            <View style={styles.permissionBox}>
+              <MaterialIcons name="security" size={48} color={theme.colors.outline} />
+              <Text style={styles.permissionText}>You are currently Off Duty. You must start your shift to scan or register visitors.</Text>
+              <TouchableOpacity style={styles.permissionBtn} onPress={() => router.push("/guard/(tabs)/profile" as any)} activeOpacity={0.8}>
+                <Text style={styles.permissionBtnText}>Go to Profile (Start Shift)</Text>
+              </TouchableOpacity>
+            </View>
+          ) : !permission.granted ? (
             <View style={styles.permissionBox}>
               <MaterialIcons name="photo-camera" size={48} color={theme.colors.outline} />
               <Text style={styles.permissionText}>Camera permission is required to scan visitor pass QR codes.</Text>
@@ -641,15 +712,23 @@ export default function GuardScanner() {
         {/* Manual Walk-in Section */}
         <View style={styles.manualSection}>
           <TouchableOpacity
-            style={styles.manualBtn}
-            onPress={() => setModalVisible(true)}
+            style={[styles.manualBtn, !isOnDuty && { backgroundColor: theme.colors.outline }]}
+            onPress={() => {
+              if (isOnDuty) {
+                setModalVisible(true);
+              } else {
+                Alert.alert("Off Duty", "You must be on duty to register visitors. Please start shift in Profile tab.");
+              }
+            }}
             activeOpacity={0.9}
           >
             <MaterialIcons name="person-add" size={22} color={theme.colors.onSecondary} />
             <Text style={styles.manualBtnText}>Register Walk-in Visitor</Text>
           </TouchableOpacity>
           <Text style={styles.manualSub}>
-            No invite? Register the visitor manually with ID verification.
+            {isOnDuty 
+              ? "No invite? Register the visitor manually with ID verification."
+              : "You must be on duty to register walk-in visitors."}
           </Text>
         </View>
 
