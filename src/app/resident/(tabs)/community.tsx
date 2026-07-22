@@ -175,6 +175,10 @@ export default function CommunityHubScreen() {
   const handleVote = async (optionName: string, index: number) => {
     if (selectedPoll !== null || !profile?.id || polls.length === 0) return;
     const activePoll = polls[0];
+    if (new Date(activePoll.expires_at).getTime() < Date.now()) {
+      Alert.alert("Poll Closed", "This poll has expired and is no longer accepting votes.");
+      return;
+    }
     try {
       const { error } = await supabase
         .from("poll_votes")
@@ -341,8 +345,13 @@ export default function CommunityHubScreen() {
             <View style={styles.pollContainer}>
               <View style={styles.pollHeader}>
                 <View style={{ flex: 1 }}>
-                  <View style={styles.activePollBadge}>
-                    <Text style={styles.activePollText}>Active Poll</Text>
+                  <View style={[
+                    styles.activePollBadge,
+                    new Date(polls[0].expires_at).getTime() < Date.now() && { backgroundColor: theme.colors.outline }
+                  ]}>
+                    <Text style={styles.activePollText}>
+                      {new Date(polls[0].expires_at).getTime() < Date.now() ? "Closed Poll" : "Active Poll"}
+                    </Text>
                   </View>
                   <Text style={styles.pollQuestion}>{polls[0].question}</Text>
                 </View>
@@ -356,23 +365,24 @@ export default function CommunityHubScreen() {
                 {polls[0].options.map((opt: string, index: number) => {
                   const percentage = getPercent(opt);
                   const isSelected = selectedPoll === index;
-                  const hasVoted = selectedPoll !== null;
+                  const isExpired = new Date(polls[0].expires_at).getTime() < Date.now();
+                  const showResults = selectedPoll !== null || isExpired;
 
                   return (
                     <TouchableOpacity
                       key={opt}
-                      disabled={hasVoted}
+                      disabled={showResults}
                       style={[styles.pollOptionBtn, isSelected && styles.pollOptionBtnSelected]}
                       onPress={() => handleVote(opt, index)}
                       activeOpacity={0.8}
                     >
                       {/* Fill Bar behind content */}
-                      {hasVoted && (
+                      {showResults && (
                         <View style={[styles.pollFillBar, { width: percentage as any }]} />
                       )}
                       <View style={styles.pollOptionContent}>
                         <Text style={[styles.pollOptionText, isSelected && styles.pollOptionTextSelected]}>{opt}</Text>
-                        {hasVoted && (
+                        {showResults && (
                           <Text style={styles.pollPercentText}>{percentage}</Text>
                         )}
                       </View>

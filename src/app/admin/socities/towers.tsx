@@ -156,8 +156,7 @@ export default function TowerManagementScreen() {
       <View style={styles.towerCardRight}>
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{item.flatCount} Flats</Text>
-        </View>
-        <MaterialIcons name="chevron-right" size={24} color={theme.colors.outline} />
+        </View><MaterialIcons name="chevron-right" size={24} color={theme.colors.outline} />
       </View>
     </TouchableOpacity>
   );
@@ -167,7 +166,8 @@ export default function TowerManagementScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
-      {/* Header */} <StatusBar style="dark" />
+      <StatusBar style="dark" />
+      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <View style={styles.headerContent}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>

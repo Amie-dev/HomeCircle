@@ -49,7 +49,8 @@ export default function ManageStaff() {
           users (
             full_name,
             email,
-            phone
+            phone,
+            avatar_url
           )
         `)
         .eq("society_id", profile.societyId)
@@ -82,7 +83,7 @@ export default function ManageStaff() {
             role: "Security Guard",
             category: "Security",
             status,
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(m.users?.full_name || "Guard")}&background=random`,
+            avatar: m.users?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.users?.full_name || "Guard")}&background=random`,
           };
         });
 

@@ -26,6 +26,7 @@ export interface ResidentVerification {
     full_name: string;
     email: string;
     phone: string;
+    avatar_url?: string | null;
   } | null;
 }
 
@@ -112,7 +113,8 @@ export function useResidentVerifications(societyId?: string) {
           users (
             full_name,
             email,
-            phone
+            phone,
+            avatar_url
           )
         `);
       

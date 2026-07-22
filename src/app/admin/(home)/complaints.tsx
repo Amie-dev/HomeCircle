@@ -1,8 +1,12 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  Image,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,11 +14,11 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { sendPushNotification } from "../../../../utils/notificationService";
 import { supabase } from "../../../../utils/supabase";
 import { useProfileStore } from "../../../store/useProfileStore";
 import { theme } from "../../../theme";
-import { StatusBar } from "expo-status-bar";
 
 interface Complaint {
   id: string;
@@ -26,6 +30,8 @@ interface Complaint {
   status: "Pending" | "In Progress" | "Resolved" | "Closed";
   residentName: string;
   residentUnit: string;
+  residentAvatar: string | null;
+  userId: string;
 }
 
 export default function OpenComplaints() {
@@ -38,6 +44,11 @@ export default function OpenComplaints() {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [modalStatus, setModalStatus] = useState<"Pending" | "In Progress" | "Resolved" | "Closed">("Pending");
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+
   const fetchComplaints = async () => {
     if (!profile?.societyId) return;
     try {
@@ -49,6 +60,7 @@ export default function OpenComplaints() {
             full_name,
             email,
             phone,
+            avatar_url,
             societymembers (
               towers ( name ),
               flats ( flat_number )
@@ -85,6 +97,8 @@ export default function OpenComplaints() {
               status: t.status,
               residentName: t.users?.full_name || "Unknown Resident",
               residentUnit: unitText,
+              residentAvatar: t.users?.avatar_url || null,
+              userId: t.user_id,
             };
           })
         );
@@ -94,22 +108,61 @@ export default function OpenComplaints() {
     }
   };
 
-  const updateComplaintStatus = async (id: string, newStatus: string) => {
+  const updateComplaintStatus = async (id: string, newStatus: string, userId?: string) => {
     try {
       const { error } = await supabase
         .from("tickets")
         .update({
           status: newStatus,
-          resolved_at: newStatus === "Resolved" ? new Date().toISOString() : null,
+          resolved_at: (newStatus === "Resolved" || newStatus === "Closed") ? new Date().toISOString() : null,
         })
         .eq("id", id);
 
       if (error) throw error;
 
+      // Send push notification to the resident if userId is provided
+      if (userId) {
+        try {
+          const { data: userData } = await supabase
+            .from("users")
+            .select("notification_token")
+            .eq("id", userId)
+            .maybeSingle();
+
+          const notifTitle = `Complaint Status Update 📢`;
+          const notifBody = `Your complaint regarding "${selectedComplaint?.title || 'issue'}" is now: ${newStatus}`;
+          const targetScreen = "/resident/(tabs)/community";
+
+          if (userData?.notification_token) {
+            await sendPushNotification({
+              token: userData.notification_token,
+              title: notifTitle,
+              body: notifBody,
+              data: {
+                screen: targetScreen,
+                url: targetScreen,
+              },
+            });
+          }
+
+          // Insert log into push_notifications
+          await supabase.from("push_notifications").insert({
+            user_id: userId,
+            title: notifTitle,
+            body: notifBody,
+            screen: targetScreen,
+            status: "Sent",
+          });
+        } catch (notifErr) {
+          console.warn("Failed to send complaint push notification:", notifErr);
+        }
+      }
+
       Alert.alert("Success", `Complaint status updated to ${newStatus}`);
       fetchComplaints();
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to update complaint status");
+      throw err;
     }
   };
 
@@ -238,32 +291,23 @@ export default function OpenComplaints() {
   });
 
   const handleCardPress = (complaint: Complaint) => {
-    Alert.alert(
-      "Complaint Action",
-      `Title: ${complaint.title}\nResident: ${complaint.residentName} (${complaint.residentUnit})\n\nDetails: ${complaint.content}`,
-      [
-        { text: "Cancel", style: "cancel" },
-        complaint.status !== "In Progress" && complaint.status !== "Resolved" && complaint.status !== "Closed" ? {
-          text: "Mark In Progress",
-          onPress: () => updateComplaintStatus(complaint.id, "In Progress")
-        } : null,
-        complaint.status !== "Resolved" && complaint.status !== "Closed" ? {
-          text: "Mark Resolved",
-          onPress: () => updateComplaintStatus(complaint.id, "Resolved")
-        } : null,
-        complaint.status !== "Closed" ? {
-          text: "Mark Closed",
-          onPress: () => updateComplaintStatus(complaint.id, "Closed")
-        } : null,
-      ].filter(Boolean) as any
-    );
+    setSelectedComplaint(complaint);
+    setModalStatus(complaint.status);
+    setIsModalVisible(true);
+  };
+
+  const isStatusTransitionAllowed = (current: string, target: string) => {
+    const order = ["Pending", "In Progress", "Resolved", "Closed"];
+    const currentIndex = order.indexOf(current);
+    const targetIndex = order.indexOf(target);
+    return targetIndex > currentIndex;
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* TopAppBar */}
-            <StatusBar style="dark" />
-      
+      <StatusBar style="dark" />
+
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -369,11 +413,15 @@ export default function OpenComplaints() {
 
                   <View style={styles.cardFooter}>
                     <View style={styles.residentWrapper}>
-                      <View style={styles.residentAvatar}>
-                        <Text style={styles.residentAvatarText}>
-                          {complaint.residentName.split(" ").map(p => p[0]).join("")}
-                        </Text>
-                      </View>
+                      {complaint.residentAvatar ? (
+                        <Image source={{ uri: complaint.residentAvatar }} style={styles.residentAvatar} />
+                      ) : (
+                        <View style={styles.residentAvatar}>
+                          <Text style={styles.residentAvatarText}>
+                            {complaint.residentName.split(" ").filter(Boolean).map(p => p[0]).join("").slice(0, 2).toUpperCase() || "UR"}
+                          </Text>
+                        </View>
+                      )}
                       <Text style={styles.residentInfoText}>
                         {complaint.residentName}{" "}
                         <Text style={styles.residentUnitText}>({complaint.residentUnit})</Text>
@@ -405,6 +453,167 @@ export default function OpenComplaints() {
       >
         <MaterialIcons name="add" size={28} color={theme.colors.onSecondary} />
       </TouchableOpacity>
+
+      {/* Complaint Details & Status Modal */}
+      <Modal
+        visible={isModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setIsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <SafeAreaView style={styles.modalSafeArea} edges={["bottom", "left", "right"]}>
+            <View style={styles.modalContent}>
+              {selectedComplaint && (
+                <>
+                  {/* Header */}
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalHeaderTitle}>Complaint Details</Text>
+                    <TouchableOpacity onPress={() => setIsModalVisible(false)} style={styles.closeButton}>
+                      <MaterialIcons name="close" size={24} color={theme.colors.primary} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
+                    {/* Category, Title & Severity */}
+                    <View style={styles.modalInfoCard}>
+                      <View style={styles.modalCategoryRow}>
+                        <View style={[styles.iconBox, { backgroundColor: getCategoryIconBg(selectedComplaint.category) }]}>
+                          <MaterialIcons
+                            name={getCategoryIcon(selectedComplaint.category) as any}
+                            size={24}
+                            color={
+                              selectedComplaint.category === "Plumbing"
+                                ? theme.colors.error
+                                : selectedComplaint.category === "Electrical"
+                                  ? theme.colors.secondary
+                                  : theme.colors.primary
+                            }
+                          />
+                        </View>
+                        <View style={styles.modalCategoryTexts}>
+                          <Text style={styles.modalCategoryLabel}>{selectedComplaint.category} Issue</Text>
+                          <Text style={styles.modalTimeAgo}>{selectedComplaint.timeAgo}</Text>
+                        </View>
+                        <View style={[styles.severityBadge, { backgroundColor: getSeverityStyle(selectedComplaint.severity).bg }]}>
+                          <Text style={[styles.severityBadgeText, { color: getSeverityStyle(selectedComplaint.severity).text }]}>
+                            {selectedComplaint.severity}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text style={styles.modalComplaintTitle}>{selectedComplaint.title}</Text>
+                      <Text style={styles.modalComplaintDesc}>{selectedComplaint.content}</Text>
+                    </View>
+
+                    {/* Resident Profile */}
+                    <View style={styles.modalResidentSection}>
+                      <Text style={styles.modalSectionTitle}>Submitted By</Text>
+                      <View style={styles.modalResidentCard}>
+                        {selectedComplaint.residentAvatar ? (
+                          <Image source={{ uri: selectedComplaint.residentAvatar }} style={styles.modalAvatar} />
+                        ) : (
+                          <View style={styles.modalAvatarFallback}>
+                            <Text style={styles.modalAvatarFallbackText}>
+                              {selectedComplaint.residentName.split(" ").filter(Boolean).map(p => p[0]).join("").slice(0, 2).toUpperCase() || "UR"}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={styles.modalResidentDetails}>
+                          <Text style={styles.modalResidentName}>{selectedComplaint.residentName}</Text>
+                          <Text style={styles.modalResidentUnit}>{selectedComplaint.residentUnit}</Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* Status Options */}
+                    <View style={styles.statusUpdateSection}>
+                      <Text style={styles.modalSectionTitle}>Update Status</Text>
+                      <View style={styles.statusOptionsContainer}>
+                        {(["Pending", "In Progress", "Resolved", "Closed"] as const).map((s) => {
+                          const isActive = modalStatus === s;
+                          const isAllowed = s === selectedComplaint.status || isStatusTransitionAllowed(selectedComplaint.status, s);
+                          let activeColor = theme.colors.outline;
+                          let activeBg = theme.colors.surfaceContainer;
+
+                          if (s === "Pending") {
+                            activeColor = theme.colors.error;
+                            activeBg = "rgba(186, 26, 26, 0.08)";
+                          } else if (s === "In Progress") {
+                            activeColor = "#DB8C00";
+                            activeBg = "rgba(219, 140, 0, 0.08)";
+                          } else if (s === "Resolved") {
+                            activeColor = theme.colors.secondary;
+                            activeBg = "rgba(0, 106, 97, 0.08)";
+                          } else if (s === "Closed") {
+                            activeColor = theme.colors.onSurfaceVariant;
+                            activeBg = theme.colors.surfaceContainerHighest;
+                          }
+
+                          return (
+                            <TouchableOpacity
+                              key={s}
+                              style={[
+                                styles.statusOptionBtn,
+                                isActive && {
+                                  borderColor: activeColor,
+                                  backgroundColor: activeBg,
+                                  borderWidth: 1.5,
+                                },
+                                !isAllowed && { opacity: 0.4 },
+                              ]}
+                              disabled={!isAllowed}
+                              onPress={() => setModalStatus(s)}
+                              activeOpacity={0.7}
+                            >
+                              <View style={[styles.statusDot, { backgroundColor: isActive ? activeColor : theme.colors.outlineVariant }]} />
+                              <Text style={[styles.statusOptionBtnText, isActive && { color: activeColor, fontWeight: "700" }, !isAllowed && { color: theme.colors.outline }]}>
+                                {s}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  </ScrollView>
+
+                  {/* Actions */}
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity
+                      style={[styles.modalActionBtn, styles.modalCancelBtn]}
+                      onPress={() => setIsModalVisible(false)}
+                      disabled={updatingStatus}
+                    >
+                      <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modalActionBtn, styles.modalSaveBtn]}
+                      onPress={async () => {
+                        setUpdatingStatus(true);
+                        try {
+                          await updateComplaintStatus(selectedComplaint.id, modalStatus, selectedComplaint.userId);
+                          setIsModalVisible(false);
+                        } catch (err) {
+                          // Handled inside updateComplaintStatus
+                        } finally {
+                          setUpdatingStatus(false);
+                        }
+                      }}
+                      disabled={updatingStatus}
+                    >
+                      {updatingStatus ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      ) : (
+                        <Text style={styles.modalSaveBtnText}>Save Status</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </View>
+          </SafeAreaView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -639,5 +848,188 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
     zIndex: 40,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  modalSafeArea: {
+    width: "100%",
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    borderTopLeftRadius: theme.rounded.xl,
+    borderTopRightRadius: theme.rounded.xl,
+  },
+  modalContent: {
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    borderTopLeftRadius: theme.rounded.xl,
+    borderTopRightRadius: theme.rounded.xl,
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 30,
+    maxHeight: "85%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.outlineVariant,
+    marginBottom: 16,
+  },
+  modalHeaderTitle: {
+    ...theme.typography.headlineMd,
+    fontWeight: "700",
+    color: theme.colors.primary,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  modalScrollContent: {
+    paddingBottom: 20,
+  },
+  modalInfoCard: {
+    backgroundColor: theme.colors.surfaceContainerLow,
+    borderRadius: theme.rounded.lg,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    marginBottom: 20,
+  },
+  modalCategoryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  modalCategoryTexts: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  modalCategoryLabel: {
+    ...theme.typography.bodyLg,
+    fontWeight: "700",
+    color: theme.colors.primary,
+  },
+  modalTimeAgo: {
+    fontSize: 12,
+    color: theme.colors.onSurfaceVariant,
+    marginTop: 2,
+  },
+  modalComplaintTitle: {
+    ...theme.typography.headlineLgMobile,
+    color: theme.colors.primary,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
+  modalComplaintDesc: {
+    ...theme.typography.bodyMd,
+    color: theme.colors.onSurfaceVariant,
+    lineHeight: 20,
+  },
+  modalResidentSection: {
+    marginBottom: 20,
+  },
+  modalSectionTitle: {
+    ...theme.typography.labelMd,
+    color: theme.colors.onSurfaceVariant,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 8,
+  },
+  modalResidentCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.surfaceContainerLow,
+    borderRadius: theme.rounded.lg,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+  },
+  modalAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  modalAvatarFallback: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: theme.colors.secondaryContainer,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalAvatarFallbackText: {
+    color: theme.colors.secondary,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  modalResidentDetails: {
+    marginLeft: 12,
+  },
+  modalResidentName: {
+    ...theme.typography.bodyLg,
+    fontWeight: "700",
+    color: theme.colors.primary,
+  },
+  modalResidentUnit: {
+    fontSize: 12,
+    color: theme.colors.onSurfaceVariant,
+    marginTop: 2,
+  },
+  statusUpdateSection: {
+    marginBottom: 20,
+  },
+  statusOptionsContainer: {
+    gap: 10,
+  },
+  statusOptionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.surfaceContainerLow,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    borderRadius: theme.rounded.md,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 12,
+  },
+  statusOptionBtnText: {
+    ...theme.typography.bodyMd,
+    color: theme.colors.primary,
+    fontWeight: "500",
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    // marginTop: 10,
+    gap: 12,
+    marginBottom: -100,
+  },
+  modalActionBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: theme.rounded.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalCancelBtn: {
+    backgroundColor: theme.colors.surfaceContainerHigh,
+  },
+  modalCancelBtnText: {
+    ...theme.typography.button,
+    color: theme.colors.onSurfaceVariant,
+  },
+  modalSaveBtn: {
+    backgroundColor: theme.colors.primary,
+  },
+  modalSaveBtnText: {
+    ...theme.typography.button,
+    color: theme.colors.onPrimary,
   },
 });

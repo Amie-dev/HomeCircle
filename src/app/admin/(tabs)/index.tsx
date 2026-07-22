@@ -17,6 +17,14 @@ import { theme } from "../../../theme";
 
 const { width } = Dimensions.get("window");
 
+const getInitials = (name: string) => {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
+};
+
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { ActivityIndicator } from "react-native";
@@ -100,6 +108,7 @@ export default function AdminDashboard() {
           created_at,
           requestpasses!inner (
             visitor_name,
+            visitor_phone,
             designation,
             tower_no,
             flat_no
@@ -116,8 +125,19 @@ export default function AdminDashboard() {
               hour: "2-digit",
               minute: "2-digit",
             });
+            const dateText = new Date(log.created_at).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric"
+            });
             return {
               id: log.id,
+              visitorName: log.requestpasses?.visitor_name || "Unknown",
+              visitorPhone: log.requestpasses?.visitor_phone || "Not Provided",
+              designation: log.requestpasses?.designation || "Visitor",
+              tower: log.requestpasses?.tower_no || "",
+              flat: log.requestpasses?.flat_no || "",
+              timeText: `${dateText} at ${timeText}`,
               name: `${log.requestpasses?.designation || "Visitor"}: ${log.requestpasses?.visitor_name || "Unknown"}`,
               unit: `Unit ${log.requestpasses?.tower_no || ""}-${log.requestpasses?.flat_no || ""} • ${timeText}`,
               status: log.action_type === "Check-in" ? "Checked In" : "Checked Out",
@@ -190,6 +210,14 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleVisitorPress = (activity: any) => {
+    Alert.alert(
+      "Visitor Entry Details 📑",
+      `Name: ${activity.visitorName}\nContact: ${activity.visitorPhone}\nRole/Purpose: ${activity.designation}\nUnit Visited: Tower ${activity.tower} - Flat ${activity.flat}\nActivity Type: ${activity.status}\nTime: ${activity.timeText}`,
+      [{ text: "Close", style: "cancel" }]
+    );
+  };
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* TopAppBar */}
@@ -205,12 +233,20 @@ export default function AdminDashboard() {
           <View style={styles.badgeContainer}>
             <Text style={styles.badgeText}>Admin Console</Text>
           </View>
-          <Image
-            style={styles.avatar}
-            source={{
-              uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuAxcvZ7N6xqE7KoAb0iO3pAP_RPYEY_lmgvjDCXXWh02kxb6ygoREivTD_VDc4Sk_789wkQ9GxRR_qKq4I2lGbKfQ9tmIE9AQu9EfZ3ftdZ3x25uHJJL0TGOiR0ps2GHIojXRPN9C-9A1xNZk9d7TVSMfqQZy5h_pF5pUXDU-7qhaG6arqjVI9dBLp-pG25JSIHohoLHZkyfK3HZnAnISdrmCb2lYkzvCwMripkxsVjanF_1kcBftbi9Q",
-            }}
-          />
+          {profile?.avatarUrl ? (
+            <Image
+              style={styles.avatar}
+              source={{
+                uri: profile.avatarUrl,
+              }}
+            />
+          ) : (
+            <View style={[styles.avatar, styles.avatarFallback]}>
+              <Text style={styles.avatarFallbackText}>
+                {getInitials(profile?.fullName || "Admin")}
+              </Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -411,7 +447,12 @@ export default function AdminDashboard() {
               <View style={styles.activityList}>
                 {recentActivity.length > 0 ? (
                   recentActivity.map((activity) => (
-                    <View key={activity.id} style={styles.activityItem}>
+                    <TouchableOpacity
+                      key={activity.id}
+                      style={styles.activityItem}
+                      onPress={() => handleVisitorPress(activity)}
+                      activeOpacity={0.7}
+                    >
                       <View style={[styles.statIconBox, { backgroundColor: "rgba(0, 106, 97, 0.05)" }]}>
                         <MaterialIcons name="person" size={24} color={theme.colors.secondary} />
                       </View>
@@ -444,7 +485,7 @@ export default function AdminDashboard() {
                           {activity.status}
                         </Text>
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   ))
                 ) : (
                   <View style={{ padding: 32, alignItems: "center" }}>
@@ -522,6 +563,16 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: theme.colors.outlineVariant,
+  },
+  avatarFallback: {
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: theme.colors.secondaryContainer,
+  },
+  avatarFallbackText: {
+    color: theme.colors.secondary,
+    fontSize: 14,
+    fontWeight: "700",
   },
   scrollContent: {
     paddingBottom: 120,

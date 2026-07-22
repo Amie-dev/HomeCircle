@@ -166,6 +166,8 @@ export default function AdminNoticesAndPolls() {
   const [newPollQuestion, setNewPollQuestion] = useState("");
   const [newPollOptionA, setNewPollOptionA] = useState("");
   const [newPollOptionB, setNewPollOptionB] = useState("");
+  const [pollExpiryType, setPollExpiryType] = useState<"5h" | "10h" | "24h" | "custom">("24h");
+  const [pollExpiryHours, setPollExpiryHours] = useState<string>("5");
 
   const mapDbNoticeToFrontend = (item: any): Notice => {
     const match = item.description.match(/^\[(Maintenance|Security|Event|General)\] ([\s\S]*)$/);
@@ -360,9 +362,25 @@ export default function AdminNoticesAndPolls() {
     }
     if (!profile?.societyId) return;
 
+    let hours = 24;
+    if (pollExpiryType === "5h") {
+      hours = 5;
+    } else if (pollExpiryType === "10h") {
+      hours = 10;
+    } else if (pollExpiryType === "24h") {
+      hours = 24;
+    } else if (pollExpiryType === "custom") {
+      const customHours = parseInt(pollExpiryHours.trim());
+      if (isNaN(customHours) || customHours <= 0) {
+        Alert.alert("Invalid Expiry", "Please enter a valid number of hours for poll expiry.");
+        return;
+      }
+      hours = customHours;
+    }
+
     try {
       const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 7); // Default expiry 7 days
+      expiresAt.setHours(expiresAt.getHours() + hours);
 
       const { data, error } = await supabase
         .from("polls")
@@ -402,6 +420,8 @@ export default function AdminNoticesAndPolls() {
       setNewPollQuestion("");
       setNewPollOptionA("");
       setNewPollOptionB("");
+      setPollExpiryType("24h");
+      setPollExpiryHours("5");
       Alert.alert("Success", "Poll created and opened for voting!");
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to create poll.");
@@ -720,6 +740,39 @@ export default function AdminNoticesAndPolls() {
                 placeholder="e.g. No, cancel"
                 placeholderTextColor={theme.colors.outline}
               />
+
+              <Text style={styles.inputLabel}>Poll Expiry Time</Text>
+              <View style={styles.expiryTypeContainer}>
+                {(["5h", "10h", "24h", "custom"] as const).map((type) => {
+                  const selected = pollExpiryType === type;
+                  const label = type === "custom" ? "Custom" : type === "24h" ? "24h" : type === "5h" ? "5h" : "10h";
+                  return (
+                    <TouchableOpacity
+                      key={type}
+                      style={[styles.expiryChip, selected && styles.expiryChipSelected]}
+                      onPress={() => setPollExpiryType(type)}
+                    >
+                      <Text style={[styles.expiryChipText, selected && styles.expiryChipTextSelected]}>
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {pollExpiryType === "custom" && (
+                <>
+                  <Text style={styles.inputLabel}>Custom Expiry (Hours)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={pollExpiryHours}
+                    onChangeText={setPollExpiryHours}
+                    placeholder="e.g. 48"
+                    placeholderTextColor={theme.colors.outline}
+                    keyboardType="number-pad"
+                  />
+                </>
+              )}
 
               <TouchableOpacity
                 style={styles.submitButton}
@@ -1068,5 +1121,31 @@ const styles = StyleSheet.create({
   submitButtonText: {
     ...theme.typography.button,
     color: theme.colors.onPrimary,
+  },
+  expiryTypeContainer: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 16,
+    flexWrap: "wrap",
+  },
+  expiryChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surface,
+  },
+  expiryChipSelected: {
+    borderColor: theme.colors.secondary,
+    backgroundColor: theme.colors.secondaryContainer,
+  },
+  expiryChipText: {
+    ...theme.typography.labelMd,
+    color: theme.colors.onSurfaceVariant,
+  },
+  expiryChipTextSelected: {
+    color: theme.colors.onSecondaryContainer,
+    fontWeight: "700",
   },
 });

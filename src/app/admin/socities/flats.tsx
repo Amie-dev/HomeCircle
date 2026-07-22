@@ -242,7 +242,8 @@ export default function FlatManagementScreen() {
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
-    >      <StatusBar style="dark" />
+    >
+      <StatusBar style="dark" />
     
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top }]}>

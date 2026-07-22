@@ -44,8 +44,8 @@ export default function RequestPassScreen() {
 
   // React Query Hooks
   const { data: historyList = [] } = usePassesHistory(activeProfile?.id);
-  console.log("DEBUG: Current Profile ID:", activeProfile?.id);
-  console.log("DEBUG: Fetched Passes Count:", historyList.length, "passes");
+  // console.log("DEBUG: Current Profile ID:", activeProfile?.id);
+  // console.log("DEBUG: Fetched Passes Count:", historyList.length, "passes");
   const createPass = useCreatePass();
   const registerProfile = useRegisterProfile();
 
@@ -73,47 +73,47 @@ export default function RequestPassScreen() {
       );
       return;
     }
-    console.log(
-      "request-pass.tsx: Checking guest notification token status for email:",
-      data.email,
-    );
+    // console.log(
+    //   "request-pass.tsx: Checking guest notification token status for email:",
+    //   data.email,
+    // );
     const { data: guestData } = await supabase
       .from("guestusers")
       .select("id, notification_token")
       .eq("email", data.email)
       .maybeSingle();
-    console.log("request-pass.tsx: guestData result:", guestData);
+    // console.log("request-pass.tsx: guestData result:", guestData);
 
-    console.log("request-pass.tsx: Fetching current Expo push token...");
+    // console.log("request-pass.tsx: Fetching current Expo push token...");
     const currentToken = await getExpoPushToken();
-    console.log("request-pass.tsx: Fetched Expo token:", currentToken);
+    // console.log("request-pass.tsx: Fetched Expo token:", currentToken);
 
     let resolvedToken: string | undefined =
       guestData?.notification_token || currentToken || undefined;
 
     if (currentToken) {
-      console.log(
-        "request-pass.tsx: Inserting token in notifications table:",
-        currentToken,
-      );
+      // console.log(
+      //   "request-pass.tsx: Inserting token in notifications table:",
+      //   currentToken,
+      // );
       // Save in notifications table (ignore unique constraint duplicates)
       const { error: insertErr } = await supabase
         .from("notifications")
         .insert({ token: currentToken });
       if (insertErr && insertErr.code !== "23505") {
-        console.warn(
-          "request-pass.tsx: Error inserting token:",
-          insertErr.message,
-        );
+        // console.warn(
+        //   "request-pass.tsx: Error inserting token:",
+        //   insertErr.message,
+        // );
       }
 
       resolvedToken = currentToken;
 
       if (guestData) {
         if (guestData.notification_token !== currentToken) {
-          console.log(
-            "request-pass.tsx: Updating existing guest profile notification_token in database...",
-          );
+          // console.log(
+          //   "request-pass.tsx: Updating existing guest profile notification_token in database...",
+          // );
           const { error: updateErr } = await supabase
             .from("guestusers")
             .update({
@@ -122,20 +122,20 @@ export default function RequestPassScreen() {
             .eq("id", guestData.id);
 
           if (updateErr) {
-            console.error(
-              "request-pass.tsx: Error updating guestusers notification_token:",
-              updateErr.message,
-            );
+            // console.error(
+            //   "request-pass.tsx: Error updating guestusers notification_token:",
+            //   updateErr.message,
+            // );
           } else {
-            console.log(
-              "request-pass.tsx: Successfully updated guestusers notification_token for id:",
-              guestData.id,
-            );
+            // console.log(
+            //   "request-pass.tsx: Successfully updated guestusers notification_token for id:",
+            //   guestData.id,
+            // );
           }
         } else {
-          console.log(
-            "request-pass.tsx: Token in database already matches current Expo token.",
-          );
+          // console.log(
+          //   "request-pass.tsx: Token in database already matches current Expo token.",
+          // );
         }
       }
     }
@@ -149,17 +149,17 @@ export default function RequestPassScreen() {
       },
       {
         onSuccess: (savedProfile) => {
-          console.log(
-            "request-pass.tsx: Successfully registered/loaded guest profile:",
-            savedProfile,
-          );
+          // console.log(
+          //   "request-pass.tsx: Successfully registered/loaded guest profile:",
+          //   savedProfile,
+          // );
           setShowRegModal(false);
         },
         onError: (err: any) => {
-          console.error(
-            "request-pass.tsx: Failed to register guest profile. Error:",
-            err,
-          );
+          // console.error(
+          //   "request-pass.tsx: Failed to register guest profile. Error:",
+          //   err,
+          // );
           Alert.alert(
             "Error saving profile",
             err.message || "Please try again.",
@@ -218,9 +218,9 @@ export default function RequestPassScreen() {
       },
       {
         onSuccess: (newPass) => {
-          console.log({
-            newPass,
-          });
+          // console.log({
+          //   newPass,
+          // });
           Alert.alert(
             initialStatus === "Approved"
               ? "Pass Approved"

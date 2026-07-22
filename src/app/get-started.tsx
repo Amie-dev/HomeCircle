@@ -66,7 +66,7 @@ const fetchAndSaveToken = async () => {
 
     if (!expoPushToken) return;
 
-    console.log("Expo Push Token:", expoPushToken);
+    // console.log("Expo Push Token:", expoPushToken);
 
     // Save token (avoid duplicates)
     const { error: notificationError } = await supabase

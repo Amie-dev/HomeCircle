@@ -206,7 +206,7 @@ export default function ManageResidents() {
           ? "Verified"
           : (v.verification_details?.status === "Rejected" ? "Rejected" : "Pending"),
         role: v.role || "Resident",
-        avatar: null,
+        avatar: v.users?.avatar_url || null,
         phone: v.users?.phone || "",
         flatId: v.flat_id || "",
       }));
@@ -236,11 +236,7 @@ export default function ManageResidents() {
   };
 
   const getInitials = (name: string) => {
-    const parts = name.split(" ");
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[1][0]).toUpperCase();
-    }
-    return name.slice(0, 2).toUpperCase();
+    return name.trim().charAt(0).toUpperCase() || "?";
   };
 
   const filteredResidents = residents.filter((resident) => {

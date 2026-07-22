@@ -45,7 +45,73 @@ export default function AdminSettings() {
   };
 
   const handleOptionPress = (optionName: string) => {
-    Alert.alert("Settings Option", `${optionName} pressed`);
+    switch (optionName) {
+      case "Settings Config":
+        Alert.alert(
+          "System Configuration ⚙️",
+          "Society configuration & technical metadata parameters are loaded directly from the database schema. To register new structures or gates, navigate to 'Society Settings' -> 'Manage Towers & Flats'.",
+          [{ text: "OK", style: "default" }]
+        );
+        break;
+      case "Edit Profile":
+        Alert.alert(
+          "Edit Admin Profile 👤",
+          `Name: ${profile?.fullName || "Not Set"}\nEmail: ${profile?.email || "Not Set"}\nPhone: ${profile?.phone || "Not Set"}\n\nTo edit your admin record, please contact the developer or use the developer portal. Changes to these records require database verification.`,
+          [{ text: "Close", style: "cancel" }]
+        );
+        break;
+      case "Manage Household Members":
+        Alert.alert(
+          "Household Members 🏠",
+          "As an Administrator, you can view, edit, and verify household structures on a per-flat basis. Navigate to 'Society Settings' -> 'Manage Towers & Flats' -> select a tower -> click 'Flats' to view specific flat members.",
+          [{ text: "OK", style: "default" }]
+        );
+        break;
+      case "Registered Vehicles":
+        Alert.alert(
+          "Registered Vehicles 🚗",
+          "Vehicle permissions and parking tags are managed per flat. To audit registered vehicles for a flat, open 'Society Settings' -> select the flat from its respective Tower/Block.",
+          [{ text: "OK", style: "default" }]
+        );
+        break;
+      case "Change Password":
+        Alert.alert(
+          "Change Password 🔒",
+          "To change your security credentials, request a password reset email via the get-started login screen or contact security engineering to reset your OAuth tokens securely.",
+          [{ text: "Close", style: "cancel" }]
+        );
+        break;
+      case "Privacy Settings":
+        Alert.alert(
+          "Privacy Settings 🛡️",
+          "All visitor logs, resident phone numbers, and address configurations are fully encrypted. Visitor entry pass logs are self-purged after 90 days of inactivity.",
+          [{ text: "OK", style: "default" }]
+        );
+        break;
+      case "Help Center":
+        Alert.alert(
+          "HomeCircle Help Center ❓",
+          "Welcome to the Help Center!\n\n💡 Quick Guides:\n• Verify Residents: Under the 'Residents' tab, select any pending registration, optionally check flat vacancy status, and approve/reject.\n• Notice Board: Go to 'Notices' to broadcast messages to all residents.\n• Staff Shifts: Go to 'Manage Staff' to register guards or assign shift locations.",
+          [{ text: "Close", style: "cancel" }]
+        );
+        break;
+      case "Terms of Service":
+        Alert.alert(
+          "Terms of Service 📝",
+          "By accessing HomeCircle, you agree to the following terms:\n1. Authenticated Access: Only authorized society administrators or security staff may utilize this console.\n2. Data Audits: Actions taken, including resident verifications and payment collections, are logged under your admin identity for audit reporting.\n3. Security Guidelines: Never share your OTP login codes or passcodes.",
+          [{ text: "Accept & Close", style: "default" }]
+        );
+        break;
+      case "Privacy Policy":
+        Alert.alert(
+          "Privacy Policy 🔒",
+          "HomeCircle Privacy Commitments:\n1. We encrypt all user profiles, vehicle logs, and passcodes.\n2. Push token identifiers are kept secure and only used for real-time verification alerts.\n3. We do not sell or monetize personal database profiles.",
+          [{ text: "OK", style: "default" }]
+        );
+        break;
+      default:
+        Alert.alert("Settings Option", `${optionName} pressed`);
+    }
   };
 
   return (
@@ -69,12 +135,20 @@ export default function AdminSettings() {
         {/* Profile Header Card */}
         <View style={styles.profileCard}>
           <View style={styles.avatarContainer}>
-            <Image
-              style={styles.avatar}
-              source={{
-                uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuDSXTT1jY-7nYhxQiaGMgm4GkvvmFbNlAuyNe_MzrmegoD31f3MDv4B6hXzoRP6JOb0I1PdSwe1edErpsD9U06-AGdBhTxYS6T7dlops_tBDGs0hGsMSMNkjgFhwBZhcd-8cwha62-SP79ZbAAwhKUwBs8jR7q3Diqscyn1Id1ezY3k_NvdUcfJWGrPyuOcX2SZhkPUpL00HwLbEUhgWo2gi9B182D_cWSqOiIRkXy8lRPYVDA8Y2JwcA",
-              }}
-            />
+            {profile?.avatarUrl ? (
+              <Image
+                style={styles.avatar}
+                source={{
+                  uri: profile.avatarUrl,
+                }}
+              />
+            ) : (
+              <View style={[styles.avatar, styles.avatarFallback]}>
+                <Text style={styles.avatarFallbackText}>
+                  {profile?.fullName ? profile.fullName.trim().charAt(0).toUpperCase() : "?"}
+                </Text>
+              </View>
+            )}
             <TouchableOpacity style={styles.editAvatarButton} activeOpacity={0.8}>
               <MaterialIcons name="edit" size={16} color={theme.colors.onSecondary} />
             </TouchableOpacity>
@@ -421,5 +495,15 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: theme.colors.outline,
     marginTop: 24,
+  },
+  avatarFallback: {
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: theme.colors.secondaryContainer,
+  },
+  avatarFallbackText: {
+    color: theme.colors.secondary,
+    fontSize: 32,
+    fontWeight: "700",
   },
 });
