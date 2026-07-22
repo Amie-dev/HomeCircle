@@ -1,4 +1,3 @@
-
 const IS_DEV = process.env.APP_VARIANT === "development";
 const IS_PREVIEW = process.env.APP_VARIANT === "preview";
 
@@ -18,6 +17,14 @@ const getPackageName = () => {
   if (IS_DEV) return "com.amie.HomeCircle.dev";
   if (IS_PREVIEW) return "com.amie.HomeCircle";
   return "com.amie.HomeCircle";
+};
+
+const getGoogleServiceJSON = () => {
+  if (IS_DEV) {
+    return process.env.GOOGLE_SERVICES_JSON;
+  }
+
+  return process.env.GOOGLE_SERVICES_JSON_PRE;
 };
 
 const config = {
@@ -60,7 +67,7 @@ const config = {
       "android.permission.CAMERA",
       "android.permission.RECORD_AUDIO",
     ],
-    "googleServicesFile": process.env.GOOGLE_SERVICES_JSON
+    googleServicesFile: getGoogleServiceJSON(),
   },
 
   web: {
@@ -75,7 +82,7 @@ const config = {
     [
       "expo-splash-screen",
       {
-        backgroundColor: "#208AEF",
+        backgroundColor: "#eaf1fb",
         image: "./assets/images/splash-icon.png",
         imageWidth: 76,
       },
@@ -84,10 +91,8 @@ const config = {
     [
       "expo-camera",
       {
-        cameraPermission:
-          "Allow $(PRODUCT_NAME) to access your camera",
-        microphonePermission:
-          "Allow $(PRODUCT_NAME) to access your microphone",
+        cameraPermission: "Allow $(PRODUCT_NAME) to access your camera",
+        microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone",
         recordAudioAndroid: true,
         barcodeScannerEnabled: true,
       },

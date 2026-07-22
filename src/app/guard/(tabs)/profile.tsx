@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  ImageBackground,
   Alert,
   ActivityIndicator,
   Linking,
@@ -180,27 +181,41 @@ export default function GuardProfile() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Guard details header */}
+        {/* Guard details header with backdrop */}
         <View style={styles.profileHero}>
-          <View style={styles.avatarContainer}>
-            <Image
-              style={styles.avatar}
-              source={{
-                uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.fullName)}&background=random&size=120`,
-              }}
-            />
-            <View style={styles.shieldBadge}>
-              <MaterialIcons name="shield" size={16} color="#ffffff" />
+          <ImageBackground
+            source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuCDRxlvqhh6kUzegIEZ4Rqg5Rr-aEY7Sli6EslMQZHaceiGmGGIIqODqnfjr5PyytQKkUwf1QI_lbVpIxhX1r_MgJ8Mthu9CaQ4YanEQs-YNYmSZrqmp028mB0pBcWiqAJV5CQFVdeTKMFnBbdP_eYh9vWsIOuU7v1M_KogjB5kI5E5E7KlrMJzqjjJ160B8M9Zya9uLZ4vAz2tbpeyTQLTBECRvNhgwwSCYi3gWDrrvwaOC0U7F0ZqwA" }}
+            style={styles.heroBg}
+            imageStyle={{ borderRadius: 20 }}
+          >
+            <View style={styles.heroOverlay}>
+              <View style={styles.avatarContainer}>
+                {profile.avatarUrl ? (
+                  <Image
+                    style={styles.avatar}
+                    source={{ uri: profile.avatarUrl }}
+                  />
+                ) : (
+                  <View style={styles.largeAvatarFallback}>
+                    <Text style={styles.largeAvatarFallbackText}>
+                      {profile.fullName?.trim() ? profile.fullName.trim().charAt(0).toUpperCase() : "G"}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.shieldBadge}>
+                  <MaterialIcons name="shield" size={16} color="#ffffff" />
+                </View>
+              </View>
+              <Text style={styles.guardName}>{profile.fullName}</Text>
+              <Text style={styles.guardSub}>Security Gate Staff • {profile.societyName || "Greenwood Estate"}</Text>
+              {profile.isVerified && (
+                <View style={styles.verifiedChip}>
+                  <MaterialIcons name="verified-user" size={14} color="#4fBFA1" style={{ marginRight: 4 }} />
+                  <Text style={styles.verifiedText}>Verified Officer</Text>
+                </View>
+              )}
             </View>
-          </View>
-          <Text style={styles.guardName}>{profile.fullName}</Text>
-          <Text style={styles.guardSub}>Security Gate Staff</Text>
-          {profile.isVerified && (
-            <View style={styles.verifiedChip}>
-              <MaterialIcons name="verified-user" size={14} color={theme.colors.secondary} style={{ marginRight: 4 }} />
-              <Text style={styles.verifiedText}>Verified Officer</Text>
-            </View>
-          )}
+          </ImageBackground>
         </View>
 
         {/* Shift Duty Status Card */}
@@ -337,8 +352,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.containerMarginMobile,
   },
   profileHero: {
+    paddingVertical: theme.spacing.md,
+  },
+  heroBg: {
+    width: "100%",
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+  heroOverlay: {
+    backgroundColor: "rgba(13, 28, 47, 0.8)",
+    paddingVertical: 24,
     alignItems: "center",
-    paddingVertical: theme.spacing.xl,
+    justifyContent: "center",
   },
   avatarContainer: {
     position: "relative",
@@ -349,7 +374,22 @@ const styles = StyleSheet.create({
     height: 96,
     borderRadius: 48,
     borderWidth: 3,
-    borderColor: theme.colors.primary,
+    borderColor: "#ffffff",
+  },
+  largeAvatarFallback: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 3,
+    borderColor: "#ffffff",
+  },
+  largeAvatarFallbackText: {
+    color: "#ffffff",
+    fontSize: 40,
+    fontWeight: "700",
   },
   shieldBadge: {
     position: "absolute",
@@ -366,40 +406,39 @@ const styles = StyleSheet.create({
   },
   guardName: {
     ...theme.typography.headlineMd,
-    color: theme.colors.primary,
+    color: "#ffffff",
     fontWeight: "700",
   },
   guardSub: {
     ...theme.typography.bodyMd,
-    color: theme.colors.onSurfaceVariant,
+    color: "rgba(255, 255, 255, 0.7)",
     marginTop: 2,
   },
   verifiedChip: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(0, 106, 97, 0.08)",
+    backgroundColor: "rgba(79, 191, 161, 0.2)",
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 999,
-    marginTop: 8,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: "rgba(79, 191, 161, 0.3)",
   },
   verifiedText: {
     ...theme.typography.labelMd,
     fontSize: 9,
     fontWeight: "700",
-    color: theme.colors.secondary,
+    color: "#4fBFA1",
     textTransform: "uppercase",
   },
   dutyCard: {
-    backgroundColor: theme.colors.primaryFixed,
+    backgroundColor: theme.colors.surfaceContainerHigh,
     borderRadius: 20,
     padding: theme.spacing.lg,
     gap: 16,
-    shadowColor: theme.colors.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 4,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
   },
   dutyHeader: {
     flexDirection: "row",
@@ -408,7 +447,7 @@ const styles = StyleSheet.create({
   },
   dutyLabel: {
     ...theme.typography.labelMd,
-    color: theme.colors.primary,
+    color: theme.colors.onSurfaceVariant,
     letterSpacing: 1.2,
     fontSize: 9,
     fontWeight: "700",
@@ -426,7 +465,7 @@ const styles = StyleSheet.create({
   },
   dutyStatusText: {
     ...theme.typography.headlineMd,
-    color: "#ffffff",
+    color: theme.colors.onSurface,
     fontWeight: "700",
     fontSize: 18,
   },
@@ -435,12 +474,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-end",
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.1)",
+    borderTopColor: theme.colors.outlineVariant,
     paddingTop: 16,
   },
   shiftHours: {
     ...theme.typography.bodyLg,
-    color: "#ffffff",
+    color: theme.colors.onSurface,
     fontWeight: "500",
     marginTop: 4,
   },

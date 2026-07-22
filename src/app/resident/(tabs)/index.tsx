@@ -231,10 +231,18 @@ export default function ResidentDashboard() {
           <Text style={styles.appBarTitle}>HomeCircle</Text>
         </View>
         <TouchableOpacity style={styles.profileAvatarWrapper} onPress={handleSignOut}>
-          <Image
-            source={{ uri: "https://lh3.googleusercontent.com/aida-public/AB6AXuCMNCD6Y7hL6sQ3JxSuK02cR_fT3x_mEk-XGF4tF4duKYHvXwUg8gwt4V-Tghbu6Z8-fu7m4peAAhQRMdUWIs2kYviS4xEeaIumADu0UtHl66ojO9VJFgEmIysApNIspZOTlfL5EhW7dOfi1_T8lHZPVQR37kYgacI95uqfW7mmWC6JeFbGouv8DzVVnT3gN6SaFPtQDeOnj0aw-SJ4SimuOUx_CbZyk9IDEyU5QdqX3iakWZGdN1QECQ" }}
-            style={styles.profileAvatar}
-          />
+          {profile?.avatarUrl ? (
+            <Image
+              source={{ uri: profile.avatarUrl }}
+              style={styles.profileAvatar}
+            />
+          ) : (
+            <View style={styles.avatarFallback}>
+              <Text style={styles.avatarFallbackText}>
+                {profile?.fullName?.trim() ? profile.fullName.trim().charAt(0).toUpperCase() : "R"}
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -409,6 +417,7 @@ export default function ResidentDashboard() {
         onToggleStatus={() => {
           Alert.alert("Access Denied", "Only security guards can check-in/out visitors.");
         }}
+        showActionBtn={false}
       />
     </View>
   );
@@ -459,6 +468,18 @@ const styles = StyleSheet.create({
   profileAvatar: {
     width: "100%",
     height: "100%",
+  },
+  avatarFallback: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: theme.colors.secondaryContainer,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarFallbackText: {
+    color: theme.colors.secondary,
+    fontSize: 18,
+    fontWeight: "700",
   },
   container: {
     flexGrow: 1,

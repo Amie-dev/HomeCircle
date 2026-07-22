@@ -500,7 +500,7 @@ export default function VisitorsScreen() {
                         style={styles.visitorAvatar}
                       />
                       <View style={styles.pendingInfo}>
-                        <Text style={styles.visitorNameText}>
+                        <Text style={styles.visitorNameText} numberOfLines={1} ellipsizeMode="tail">
                           {item.visitor_name}
                         </Text>
                         <View style={styles.designationRow}>
@@ -509,11 +509,11 @@ export default function VisitorsScreen() {
                             size={14}
                             color={theme.colors.secondary}
                           />
-                          <Text style={styles.designationText}>
+                          <Text style={styles.designationText} numberOfLines={1} ellipsizeMode="tail">
                             {item.designation}
                           </Text>
                         </View>
-                        <Text style={styles.flatText}>
+                        <Text style={styles.flatText} numberOfLines={1} ellipsizeMode="tail">
                           Flat: {item.tower_no || "B"}-{item.flat_no || "402"}
                         </Text>
                       </View>
@@ -632,11 +632,11 @@ export default function VisitorsScreen() {
                             }
                           />
                         </View>
-                        <View>
-                          <Text style={styles.upcomingNameText}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.upcomingNameText} numberOfLines={1} ellipsizeMode="tail">
                             {item.visitor_name}
                           </Text>
-                          <Text style={styles.upcomingDescText}>
+                          <Text style={styles.upcomingDescText} numberOfLines={1} ellipsizeMode="tail">
                             Visitor Type: {item.designation}
                           </Text>
                         </View>
@@ -696,11 +696,11 @@ export default function VisitorsScreen() {
                             color="#2e7d32"
                           />
                         </View>
-                        <View>
-                          <Text style={styles.upcomingNameText}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.upcomingNameText} numberOfLines={1} ellipsizeMode="tail">
                             {item.visitor_name}
                           </Text>
-                          <Text style={styles.upcomingDescText}>
+                          <Text style={styles.upcomingDescText} numberOfLines={1} ellipsizeMode="tail">
                             {item.designation} • Inside Society
                           </Text>
                         </View>
@@ -784,14 +784,14 @@ export default function VisitorsScreen() {
                           color={theme.colors.onSurfaceVariant}
                         />
                       </View>
-                      <View>
-                        <Text style={styles.historyName}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.historyName} numberOfLines={1} ellipsizeMode="tail">
                           {item.visitor_name}
                         </Text>
-                        <Text style={styles.historyDetails}>
+                        <Text style={styles.historyDetails} numberOfLines={1} ellipsizeMode="tail">
                           {item.designation} • {formatTime(item.created_at)}
                         </Text>
-                        <Text style={styles.historyDestination}>
+                        <Text style={styles.historyDestination} numberOfLines={1} ellipsizeMode="tail">
                           Destination: Tower {item.tower_no}, Flat{" "}
                           {item.flat_no}
                         </Text>
@@ -838,6 +838,7 @@ export default function VisitorsScreen() {
         onToggleStatus={() => {
           Alert.alert("Access Denied", "Only security guards can check-in/out visitors.");
         }}
+        showActionBtn={false}
       />
     </View>
   );
@@ -1066,6 +1067,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing.md,
+    flex: 1,
+    marginRight: theme.spacing.md,
   },
   upcomingIconBox: {
     width: 44,
@@ -1141,6 +1144,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing.md,
+    flex: 1,
+    marginRight: theme.spacing.md,
   },
   historyIconWrapper: {
     width: 44,

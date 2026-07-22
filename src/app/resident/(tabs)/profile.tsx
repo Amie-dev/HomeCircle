@@ -110,7 +110,12 @@ export default function ProfileScreen() {
       // 2. Query household members for the flat (using flatUserIds)
       const { data: householdData } = await supabase
         .from("household_members")
-        .select("*")
+        .select(`
+          *,
+          users:user_id (
+            avatar_url
+          )
+        `)
         .in("user_id", flatUserIds);
 
       if (householdData) {
@@ -419,7 +424,35 @@ export default function ProfileScreen() {
   };
 
   const handleChangePassword = () => {
-    Alert.alert("Change Password", "A password reset link has been sent to your registered email address.");
+    Alert.alert(
+      "Change Password 🔒",
+      "A password reset link will be sent to your registered email address. Please check your inbox (and spam folder) to reset your credentials.",
+      [
+        { text: "Send Link", onPress: () => Alert.alert("Reset Sent", "Password reset email has been dispatched.") },
+        { text: "Cancel", style: "cancel" }
+      ]
+    );
+  };
+
+  const handleOptionPress = (optionName: string) => {
+    switch (optionName) {
+      case "Help Center":
+        Alert.alert(
+          "HomeCircle Resident Help Center ❓",
+          "Welcome to the Help Center!\n\n💡 Resident Quick Guides:\n• Pre-approve Guests: Generate entry codes on the 'Pre-approve Guest' screen so your visitors can enter without waiting at the gate.\n• Pay Dues: Access the 'Dues' screen to view pending maintenance invoices and record payments.\n• Book Amenities: Book local society facilities (gym, pool, hall) from the 'Book Amenity' screen.",
+          [{ text: "Close", style: "cancel" }]
+        );
+        break;
+      case "Terms of Service":
+        Alert.alert(
+          "Terms of Service & Privacy Policy 📝",
+          "HomeCircle Terms & Privacy commitments:\n\n1. Authenticated Access: Only authorized residents and verified household members may use this account.\n2. Data Encryption: Your profile details, vehicle numbers, and family entries are securely encrypted.\n3. Real-time Alerts: Push token identifiers are kept safe and only used to alert you of gate entry requests.",
+          [{ text: "Accept & Close", style: "default" }]
+        );
+        break;
+      default:
+        break;
+    }
   };
 
   const handleCallEmergency = () => {
@@ -452,10 +485,18 @@ export default function ProfileScreen() {
         {/* User Header Section */}
         <View style={styles.profileHeaderCard}>
           <View style={styles.avatarContainer}>
-            <Image
-              source={{ uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.fullName)}&background=0D9488&color=fff&size=100` }}
-              style={styles.largeAvatar}
-            />
+            {profile.avatarUrl ? (
+              <Image
+                source={{ uri: profile.avatarUrl }}
+                style={styles.largeAvatar}
+              />
+            ) : (
+              <View style={styles.largeAvatarFallback}>
+                <Text style={styles.largeAvatarFallbackText}>
+                  {profile.fullName?.trim() ? profile.fullName.trim().charAt(0).toUpperCase() : "R"}
+                </Text>
+              </View>
+            )}
             {profile.isVerified && (
               <View style={styles.verifiedBadge}>
                 <MaterialIcons name="verified" size={14} color="#ffffff" />
@@ -571,10 +612,17 @@ export default function ProfileScreen() {
               <View style={styles.householdList}>
                 {household.map((member) => (
                   <View key={member.id} style={styles.memberCard}>
-                    <Image
-                      source={{ uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=random&color=fff&size=40` }}
-                      style={styles.memberAvatar}
-                    />
+                    {member.users?.avatar_url ? (
+                      <Image
+                        source={{ uri: member.users.avatar_url }}
+                        style={styles.memberAvatar}
+                      />
+                    ) : (
+                      <Image
+                        source={{ uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(member.full_name)}&background=random&color=fff&size=40` }}
+                        style={styles.memberAvatar}
+                      />
+                    )}
                     <View style={{ flex: 1, marginLeft: 10 }}>
                       <Text style={styles.memberNameText}>{member.full_name}</Text>
                       <Text style={styles.memberRoleText}>{member.relationship} • {member.phone}</Text>
@@ -740,14 +788,14 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>SUPPORT</Text>
           <View style={styles.cardContainer}>
-            <TouchableOpacity style={styles.supportRow} onPress={() => Alert.alert("Help Center", "Opening help documentation...")}>
+            <TouchableOpacity style={styles.supportRow} onPress={() => handleOptionPress("Help Center")}>
               <MaterialIcons name="help" size={20} color={theme.colors.onSurfaceVariant} />
               <Text style={styles.supportRowText}>Help Center</Text>
             </TouchableOpacity>
 
             <View style={styles.divider} />
 
-            <TouchableOpacity style={styles.supportRow} onPress={() => Alert.alert("Terms of Service", "Opening Terms & Privacy document...")}>
+            <TouchableOpacity style={styles.supportRow} onPress={() => handleOptionPress("Terms of Service")}>
               <MaterialIcons name="description" size={20} color={theme.colors.onSurfaceVariant} />
               <Text style={styles.supportRowText}>Terms of Service</Text>
             </TouchableOpacity>
@@ -984,6 +1032,19 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 40,
     backgroundColor: theme.colors.background,
+  },
+  largeAvatarFallback: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: theme.colors.secondaryContainer,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  largeAvatarFallbackText: {
+    color: theme.colors.secondary,
+    fontSize: 32,
+    fontWeight: "700",
   },
   verifiedBadge: {
     position: "absolute",

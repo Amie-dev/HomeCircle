@@ -1,6 +1,6 @@
 export const theme = {
   colors: {
-    background: '#f7f9fb',
+    background: '#f8fbff',
     primary: '#000000',
     onPrimary: '#ffffff',
     secondary: '#006a61', // Community Teal

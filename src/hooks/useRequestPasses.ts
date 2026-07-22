@@ -126,6 +126,7 @@ export function usePassesHistory(
       return data as VisitorPass[];
     },
     enabled: !!userId,
+    refetchInterval: 4000, // Poll every 4 seconds to guarantee always updated data
   });
 }
 

@@ -37,6 +37,9 @@ interface HouseholdMember {
   phone: string;
   relationship: Relationship;
   created_at?: string;
+  users?: {
+    avatar_url: string | null;
+  } | null;
 }
 
 const RELATIONSHIPS: Relationship[] = [
@@ -88,14 +91,21 @@ function MemberCard({
   return (
     <View style={styles.memberCard}>
       <View style={styles.memberLeft}>
-        <Image
-          source={{
-            uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(
-              member.full_name
-            )}&background=${color}&color=fff&size=80`,
-          }}
-          style={styles.memberAvatar}
-        />
+        {member.users?.avatar_url ? (
+          <Image
+            source={{ uri: member.users.avatar_url }}
+            style={styles.memberAvatar}
+          />
+        ) : (
+          <Image
+            source={{
+              uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                member.full_name
+              )}&background=${color}&color=fff&size=80`,
+            }}
+            style={styles.memberAvatar}
+          />
+        )}
         <View style={styles.memberInfo}>
           <View style={styles.memberNameRow}>
             <Text style={styles.memberName} numberOfLines={1}>
@@ -191,7 +201,12 @@ export default function HouseholdMembersScreen() {
 
         const { data, error } = await supabase
           .from("household_members")
-          .select("*")
+          .select(`
+            *,
+            users:user_id (
+              avatar_url
+            )
+          `)
           .in("user_id", flatUserIds)
           .order("created_at", { ascending: true });
         if (error) throw error;
