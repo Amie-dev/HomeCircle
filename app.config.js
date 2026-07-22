@@ -130,14 +130,9 @@ const config = {
     reactCompiler: true,
   },
 
-  extra: {
-    router: {},
-    eas: {
-      projectId: "134e5fe6-7adb-45e4-91ea-18aea3f94795",
-    },
-  },
+  
 
-  owner: "amie.code",
+
 };
 
 module.exports = config;
