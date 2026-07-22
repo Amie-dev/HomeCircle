@@ -98,6 +98,13 @@ const config = {
       },
     ],
   ],
+  updates: {
+    url: "https://u.expo.dev/134e5fe6-7adb-45e4-91ea-18aea3f94795",
+  },
+
+  runtimeVersion: {
+    policy: "appVersion",
+  },
 
   experiments: {
     typedRoutes: true,
