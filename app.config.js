@@ -4,6 +4,8 @@ const path = require("path");
 const IS_DEV = process.env.APP_VARIANT === "development";
 const IS_PREVIEW = process.env.APP_VARIANT === "preview";
 
+const EAS_PROJECT_ID = "23b28d05-1f10-4034-a9cf-4fc3981657eb";
+
 const getAppName = () => {
   if (IS_DEV) return "HomeCircle (Dev)";
   if (IS_PREVIEW) return "HomeCircle";
@@ -12,41 +14,44 @@ const getAppName = () => {
 
 const getBundleIdentifier = () => {
   if (IS_DEV) return "com.amie.HomeCircle.dev";
-  if (IS_PREVIEW) return "com.amie.HomeCircle";
   return "com.amie.HomeCircle";
 };
 
 const getPackageName = () => {
   if (IS_DEV) return "com.amie.HomeCircle.dev";
-  if (IS_PREVIEW) return "com.amie.HomeCircle";
   return "com.amie.HomeCircle";
 };
 
 const getGoogleServiceJSON = () => {
-  const envValue = IS_DEV ? process.env.GOOGLE_SERVICES_JSON : process.env.GOOGLE_SERVICES_JSON_PRE;
-  
+  const envValue = IS_DEV
+    ? process.env.GOOGLE_SERVICES_JSON
+    : process.env.GOOGLE_SERVICES_JSON_PRE;
+
   if (envValue) {
-    // If it looks like JSON content, write it to a file
-    if (envValue.trim().startsWith('{')) {
-      const fileName = IS_DEV ? 'google-services.json' : 'google-services-pre-prod.json';
-      const filePath = path.resolve(__dirname, fileName);
-      try {
-        fs.writeFileSync(filePath, envValue.trim());
-        return `./${fileName}`;
-      } catch (err) {
-        console.error(`Failed to write ${fileName} from environment variable:`, err);
-      }
-    } else {
-      // Otherwise, assume it's already a file path
-      return envValue;
+    // Environment variable contains JSON
+    if (envValue.trim().startsWith("{")) {
+      const fileName = IS_DEV
+        ? "google-services.json"
+        : "google-services-pre-prod.json";
+
+      const filePath = path.join(__dirname, fileName);
+
+      fs.writeFileSync(filePath, envValue);
+
+      return filePath;
     }
+
+    // Environment variable contains a file path
+    return envValue;
   }
 
-  // Fallback to local files if env var is empty/not set
-  return IS_DEV ? "./google-services.json" : "./google-services-pre-prod.json";
+  // Local fallback
+  return IS_DEV
+    ? "./google-services.json"
+    : "./google-services-pre-prod.json";
 };
 
-const config = {
+module.exports = {
   name: getAppName(),
   slug: "HomeCircle",
   version: "1.0.0",
@@ -61,7 +66,7 @@ const config = {
   splash: {
     image: "./assets/images/splash-icon.png",
     resizeMode: "contain",
-    backgroundColor: "#4e6d8a",
+    backgroundColor: "#ffffff",
   },
 
   ios: {
@@ -86,6 +91,7 @@ const config = {
       "android.permission.CAMERA",
       "android.permission.RECORD_AUDIO",
     ],
+
     googleServicesFile: getGoogleServiceJSON(),
   },
 
@@ -97,7 +103,6 @@ const config = {
   plugins: [
     "expo-router",
     "expo-notifications",
-
     [
       "expo-splash-screen",
       {
@@ -106,19 +111,21 @@ const config = {
         imageWidth: 76,
       },
     ],
-
     [
       "expo-camera",
       {
-        cameraPermission: "Allow $(PRODUCT_NAME) to access your camera",
-        microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone",
+        cameraPermission:
+          "Allow $(PRODUCT_NAME) to access your camera",
+        microphonePermission:
+          "Allow $(PRODUCT_NAME) to access your microphone",
         recordAudioAndroid: true,
         barcodeScannerEnabled: true,
       },
     ],
   ],
+
   updates: {
-    url: "https://u.expo.dev/134e5fe6-7adb-45e4-91ea-18aea3f94795",
+    url: `https://u.expo.dev/${EAS_PROJECT_ID}`,
   },
 
   runtimeVersion: {
@@ -130,9 +137,11 @@ const config = {
     reactCompiler: true,
   },
 
-  
+  extra: {
+    eas: {
+      projectId: EAS_PROJECT_ID,
+    },
+  },
 
-
+  owner: "code.amie",
 };
-
-module.exports = config;
