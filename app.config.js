@@ -1,3 +1,6 @@
+const fs = require("fs");
+const path = require("path");
+
 const IS_DEV = process.env.APP_VARIANT === "development";
 const IS_PREVIEW = process.env.APP_VARIANT === "preview";
 
@@ -20,11 +23,27 @@ const getPackageName = () => {
 };
 
 const getGoogleServiceJSON = () => {
-  if (IS_DEV) {
-    return process.env.GOOGLE_SERVICES_JSON;
+  const envValue = IS_DEV ? process.env.GOOGLE_SERVICES_JSON : process.env.GOOGLE_SERVICES_JSON_PRE;
+  
+  if (envValue) {
+    // If it looks like JSON content, write it to a file
+    if (envValue.trim().startsWith('{')) {
+      const fileName = IS_DEV ? 'google-services.json' : 'google-services-pre-prod.json';
+      const filePath = path.resolve(__dirname, fileName);
+      try {
+        fs.writeFileSync(filePath, envValue.trim());
+        return `./${fileName}`;
+      } catch (err) {
+        console.error(`Failed to write ${fileName} from environment variable:`, err);
+      }
+    } else {
+      // Otherwise, assume it's already a file path
+      return envValue;
+    }
   }
 
-  return process.env.GOOGLE_SERVICES_JSON_PRE;
+  // Fallback to local files if env var is empty/not set
+  return IS_DEV ? "./google-services.json" : "./google-services-pre-prod.json";
 };
 
 const config = {
