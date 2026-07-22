@@ -52,8 +52,8 @@ const config = {
   version: "1.0.0",
 
   orientation: "portrait",
-  scheme: "HomeCircle",
-
+  // scheme: "HomeCircle",
+scheme: "homecircle",
   userInterfaceStyle: "automatic",
 
   icon: "./assets/images/icon.png",
