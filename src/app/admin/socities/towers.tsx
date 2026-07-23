@@ -14,6 +14,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Keyboard,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../../../utils/supabase";
@@ -93,6 +94,7 @@ export default function TowerManagementScreen() {
   }, [profile?.societyId]);
 
   const handleAddTower = async () => {
+    Keyboard.dismiss();
     if (!newTowerName.trim() || !newTowerId.trim()) {
       Alert.alert("Missing Fields", "Please enter tower name and code.");
       return;
@@ -222,7 +224,7 @@ export default function TowerManagementScreen() {
         onRequestClose={() => setIsModalVisible(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior="padding"
           style={styles.modalOverlay}
         >
           <View style={styles.modalContent}>

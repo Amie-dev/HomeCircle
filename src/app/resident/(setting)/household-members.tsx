@@ -13,6 +13,7 @@ import {
   Platform,
   ActivityIndicator,
   RefreshControl,
+  Keyboard,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -238,6 +239,7 @@ export default function HouseholdMembersScreen() {
   };
 
   const handleAddMember = async () => {
+    Keyboard.dismiss();
     if (!fullName.trim()) {
       Alert.alert("Required", "Please enter the member's full name.");
       return;
@@ -298,7 +300,7 @@ export default function HouseholdMembersScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <View style={[styles.outer, { backgroundColor: theme.colors.background }]}>
         <StatusBar style="dark" />
@@ -424,7 +426,7 @@ export default function HouseholdMembersScreen() {
         >
           <KeyboardAvoidingView
             style={{ flex: 1 }}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior="padding"
           >
             <View style={styles.modalOverlay}>
               <TouchableOpacity

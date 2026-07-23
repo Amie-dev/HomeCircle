@@ -55,6 +55,16 @@ export default function RequestPassScreen() {
   }, []);
 
   useEffect(() => {
+    if (!isLoadingProfile && profile) {
+      if (profile.role === "Guard") {
+        router.replace("/guard" as any);
+      } else if (profile.role === "Admin") {
+        router.replace("/admin" as any);
+      }
+    }
+  }, [profile, isLoadingProfile]);
+
+  useEffect(() => {
     if (!isLoadingProfile && !isLoadingGuest && !profile && !guestProfile) {
       setShowRegModal(true);
     }

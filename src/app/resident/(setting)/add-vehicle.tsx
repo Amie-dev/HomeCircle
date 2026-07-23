@@ -13,6 +13,7 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -186,6 +187,7 @@ export default function AddVehicleScreen() {
   };
 
   const handleRegister = async () => {
+    Keyboard.dismiss();
     if (!vehicleName.trim()) {
       Alert.alert("Required", "Please enter the brand & model.");
       return;
@@ -256,7 +258,7 @@ export default function AddVehicleScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <View style={[styles.outer, { backgroundColor: theme.colors.background }]}>
         <StatusBar style="dark" />
@@ -380,7 +382,7 @@ export default function AddVehicleScreen() {
         >
           <KeyboardAvoidingView
             style={{ flex: 1 }}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior="padding"
           >
             <View style={styles.modalOverlay}>
               <TouchableOpacity

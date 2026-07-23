@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -199,6 +200,7 @@ export default function CommunityHubScreen() {
   };
 
   const handleCreateTicket = async () => {
+    Keyboard.dismiss();
     if (!ticketTitle.trim()) {
       Alert.alert("Error", "Please provide a title for the ticket.");
       return;
@@ -499,7 +501,7 @@ export default function CommunityHubScreen() {
       <Modal visible={showNewTicketModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            behavior="padding"
             style={styles.modalContent}
           >
             <View style={styles.modalHeader}>

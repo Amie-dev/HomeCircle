@@ -14,6 +14,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Keyboard,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import NoticeDetailBottomSheet, { NoticeDetail } from "../../../components/NoticeDetailBottomSheet";
@@ -312,6 +313,7 @@ export default function AdminNoticesAndPolls() {
   };
 
   const handleCreateNotice = async () => {
+    Keyboard.dismiss();
     if (!newNoticeTitle.trim() || !newNoticeContent.trim()) {
       Alert.alert("Missing Fields", "Please enter notice title and details.");
       return;
@@ -356,6 +358,7 @@ export default function AdminNoticesAndPolls() {
   };
 
   const handleCreatePoll = async () => {
+    Keyboard.dismiss();
     if (!newPollQuestion.trim() || !newPollOptionA.trim() || !newPollOptionB.trim()) {
       Alert.alert("Missing Fields", "Please enter poll question and both options.");
       return;
@@ -630,7 +633,7 @@ export default function AdminNoticesAndPolls() {
       {/* CREATE NOTICE MODAL */}
       <Modal visible={noticeModalVisible} animationType="slide" transparent>
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior="padding"
           style={styles.modalBg}
         >
           <View style={styles.modalContainer}>
@@ -700,7 +703,7 @@ export default function AdminNoticesAndPolls() {
       {/* CREATE POLL MODAL */}
       <Modal visible={pollModalVisible} animationType="slide" transparent>
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior="padding"
           style={styles.modalBg}
         >
           <View style={styles.modalContainer}>

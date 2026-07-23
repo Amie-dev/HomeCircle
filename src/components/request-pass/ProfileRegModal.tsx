@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Platform,
   KeyboardAvoidingView,
+  Keyboard,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { theme } from "../../theme";
@@ -37,6 +38,7 @@ export const ProfileRegModal: React.FC<ProfileRegModalProps> = ({
   const [vehicleNumber, setVehicleNumber] = useState("");
 
   const handleSubmit = () => {
+    Keyboard.dismiss();
     onRegister({ fullName, email, phone, vehicleNumber });
   };
 
@@ -48,7 +50,7 @@ export const ProfileRegModal: React.FC<ProfileRegModalProps> = ({
       statusBarTranslucent={true}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior="padding"
         style={styles.modalOverlay}
       >
         <View style={styles.modalContent}>

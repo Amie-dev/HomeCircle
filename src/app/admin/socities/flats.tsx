@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Keyboard,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -93,6 +94,7 @@ export default function FlatManagementScreen() {
   };
 
   const handleSaveFlat = async () => {
+    Keyboard.dismiss();
     if (!flatNumber.trim()) {
       Alert.alert("Error", "Please enter flat number.");
       return;
@@ -294,7 +296,7 @@ export default function FlatManagementScreen() {
         onRequestClose={() => setIsModalVisible(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior="padding"
           style={styles.modalOverlay}
         >
           <View style={styles.modalContent}>
