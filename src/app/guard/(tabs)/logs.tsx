@@ -145,40 +145,8 @@ export default function GuardLogs() {
 
     setCheckoutProcessing(true);
     try {
-      // 1. Insert Check-out log
-      const { error: logErr } = await supabase
-        .from("visitor_logs")
-        .insert({
-          pass_id: p.id,
-          logged_by: profile.id,
-          action_type: "Check-out",
-          gate_name: gateName,
-        });
-
-      if (logErr) throw logErr;
-
-      // Log to guardlogs
-      if (profile.societyId) {
-        try {
-          await supabase.from("guardlogs").insert({
-            guard_id: profile.id,
-            society_id: profile.societyId,
-            gate_name: gateName || "Main Gate",
-            action_type: "Scan",
-            details: {
-              action: "Visitor Checkout",
-              pass_id: p.id,
-              visitor_name: p.visitor_name,
-              designation: p.designation,
-              type: "Check-out",
-            },
-          });
-        } catch (logErr) {
-          console.warn("Failed to write to guardlogs on checkout:", logErr);
-        }
-      }
-
-      // 2. Fetch matched residents of the destination flat to notify them
+      // 1. Fetch matched flat and resident membership ID
+      let resolvedResidentMemberId: string | null = null;
       let residentList: any[] = [];
       try {
         if (profile.societyId) {
@@ -200,7 +168,7 @@ export default function GuardLogs() {
           if (matchedTower) {
             const { data: flatData } = await supabase
               .from("flats")
-              .select("id")
+              .select("id, flat_admin_id")
               .eq("tower_id", matchedTower.id)
               .eq("flat_number", p.flat_no)
               .maybeSingle();
@@ -208,10 +176,13 @@ export default function GuardLogs() {
             if (flatData) {
               const { data: membersData } = await supabase
                 .from("societymembers")
-                .select("user_id")
+                .select("id, user_id")
                 .eq("flat_id", flatData.id);
 
               if (membersData && membersData.length > 0) {
+                const flatAdminMember = membersData.find(m => m.user_id === flatData.flat_admin_id);
+                resolvedResidentMemberId = flatAdminMember ? flatAdminMember.id : membersData[0].id;
+
                 const userIds = membersData.map((m) => m.user_id);
                 const { data: usersData } = await supabase
                   .from("users")
@@ -240,7 +211,41 @@ export default function GuardLogs() {
           }
         }
       } catch (smErr) {
-        console.warn("Failed to retrieve residents for notification:", smErr);
+        console.warn("Failed to retrieve residents or flat details:", smErr);
+      }
+
+      // 2. Insert Check-out log
+      const { error: logErr } = await supabase
+        .from("visitor_logs")
+        .insert({
+          pass_id: p.id,
+          resident_id: resolvedResidentMemberId,
+          logged_by: profile.id,
+          action_type: "Check-out",
+          gate_name: gateName,
+        });
+
+      if (logErr) throw logErr;
+
+      // Log to guardlogs
+      if (profile.societyId) {
+        try {
+          await supabase.from("guardlogs").insert({
+            guard_id: profile.id,
+            society_id: profile.societyId,
+            gate_name: gateName || "Main Gate",
+            action_type: "Scan",
+            details: {
+              action: "Visitor Checkout",
+              pass_id: p.id,
+              visitor_name: p.visitor_name,
+              designation: p.designation,
+              type: "Check-out",
+            },
+          });
+        } catch (logErr) {
+          console.warn("Failed to write to guardlogs on checkout:", logErr);
+        }
       }
 
       // 3. Send notifications to residents

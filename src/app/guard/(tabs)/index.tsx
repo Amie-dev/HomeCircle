@@ -49,6 +49,7 @@ export default function GuardScanner() {
   const [residentFlat, setResidentFlat] = useState<any>(null);
   const [residentTower, setResidentTower] = useState<any>(null);
   const [residentList, setResidentList] = useState<any[]>([]);
+  const [residentMemberId, setResidentMemberId] = useState<string | null>(null);
   const [actionProcessing, setActionProcessing] = useState(false);
 
   const [recentLogs, setRecentLogs] = useState<any[]>([]);
@@ -232,7 +233,8 @@ export default function GuardScanner() {
       let matchedTower = null;
       let matchedFlat = null;
       let list: any[] = [];
-
+      let resolvedResidentMemberId: string | null = null;
+ 
       if (profile.societyId) {
         const { data: towersData } = await supabase
           .from("towers")
@@ -249,23 +251,26 @@ export default function GuardScanner() {
         }
 
         if (matchedTower) {
-          const { data: flatData } = await supabase
-            .from("flats")
-            .select("id, flat_number, floor")
-            .eq("tower_id", matchedTower.id)
-            .eq("flat_number", pass.flat_no)
-            .maybeSingle();
-
+            const { data: flatData } = await supabase
+              .from("flats")
+              .select("id, flat_number, floor, flat_admin_id")
+              .eq("tower_id", matchedTower.id)
+              .eq("flat_number", pass.flat_no)
+              .maybeSingle();
+ 
           if (flatData) {
             matchedFlat = flatData;
-
+ 
             const { data: membersData } = await supabase
               .from("societymembers")
-              .select("user_id")
+              .select("id, user_id")
               .eq("flat_id", flatData.id);
 
-            if (membersData && membersData.length > 0) {
-              const userIds = membersData.map((m) => m.user_id);
+              if (membersData && membersData.length > 0) {
+                const flatAdminMember = membersData.find(m => m.user_id === flatData.flat_admin_id);
+                resolvedResidentMemberId = flatAdminMember ? flatAdminMember.id : membersData[0].id;
+
+                const userIds = membersData.map((m) => m.user_id);
               const { data: usersData } = await supabase
                 .from("users")
                 .select("id, full_name, email, phone, notification_token")
@@ -301,6 +306,7 @@ export default function GuardScanner() {
       setResidentTower(matchedTower);
       setResidentFlat(matchedFlat);
       setResidentList(list);
+      setResidentMemberId(resolvedResidentMemberId);
       setVerificationModalVisible(true);
     } catch (err: any) {
       Alert.alert("Scan Error", err.message || "Failed to verify pass.", [
@@ -317,6 +323,7 @@ export default function GuardScanner() {
       // 1. Log check-in in visitor_logs
       const { error: logErr } = await supabase.from("visitor_logs").insert({
         pass_id: scannedPass.id,
+        resident_id: residentMemberId,
         logged_by: profile.id,
         action_type: "Check-in",
         gate_name: gateName,
@@ -450,6 +457,7 @@ export default function GuardScanner() {
               setResidentTower(null);
               setResidentFlat(null);
               setResidentList([]);
+              setResidentMemberId(null);
               setScanned(false);
               fetchRecentLogs();
             },
@@ -543,6 +551,47 @@ export default function GuardScanner() {
       const validUntil = new Date();
       validUntil.setHours(validUntil.getHours() + 2); // Valid for 2 hours
 
+      let resolvedResidentMemberId: string | null = null;
+      try {
+        const { data: towersData } = await supabase
+          .from("towers")
+          .select("id, name, tower_id")
+          .eq("society_id", profile.societyId);
+
+        let matchedTower = null;
+        if (towersData) {
+          matchedTower = towersData.find(
+            (t) =>
+              t.name?.toLowerCase() === towerNo.trim().toLowerCase() ||
+              t.tower_id?.toLowerCase() === towerNo.trim().toLowerCase() ||
+              t.name?.toLowerCase().includes(towerNo.trim().toLowerCase()),
+          );
+        }
+
+        if (matchedTower) {
+          const { data: flatData } = await supabase
+            .from("flats")
+            .select("id, flat_admin_id")
+            .eq("tower_id", matchedTower.id)
+            .eq("flat_number", flatNo.trim())
+            .maybeSingle();
+
+          if (flatData) {
+            const { data: membersData } = await supabase
+              .from("societymembers")
+              .select("id, user_id")
+              .eq("flat_id", flatData.id);
+
+            if (membersData && membersData.length > 0) {
+              const flatAdminMember = membersData.find(m => m.user_id === flatData.flat_admin_id);
+              resolvedResidentMemberId = flatAdminMember ? flatAdminMember.id : membersData[0].id;
+            }
+          }
+        }
+      } catch (resolveErr) {
+        console.warn("Failed to pre-resolve resident membership ID for manual register:", resolveErr);
+      }
+
       // 1. Insert pass as pre-verified
       const { data: pass, error: passErr } = await supabase
         .from("requestpasses")
@@ -572,6 +621,7 @@ export default function GuardScanner() {
       // 2. Log in visitor_logs
       const { error: logErr } = await supabase.from("visitor_logs").insert({
         pass_id: pass.id,
+        resident_id: resolvedResidentMemberId,
         logged_by: profile.id,
         action_type: "Check-in",
         gate_name: gateName,

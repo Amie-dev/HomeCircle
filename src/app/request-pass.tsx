@@ -206,6 +206,7 @@ export default function RequestPassScreen() {
       {
         passData: {
           user_id: activeProfile.id,
+          resident_id: profile ? profile.id : undefined,
           visitor_name: formData.visitorName,
           visitor_email: formData.visitorEmail,
           visitor_phone: formData.visitorPhone,

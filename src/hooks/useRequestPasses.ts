@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Alert } from "react-native";
 import { sendPushNotification } from "../../utils/notificationService";
 import { supabase } from "../../utils/supabase";
 import {
@@ -30,6 +31,7 @@ export interface VisitorPass {
   };
   created_at: string;
   user_id: string;
+  resident_id?: string | null;
 }
 
 // 1. Fetch History Query Hook
@@ -40,6 +42,7 @@ export function usePassesHistory(
   towerId?: string,
   towerName?: string,
   flatName?: string,
+  enabledFlag?: boolean,
 ) {
   // console.log("DEBUG [usePassesHistory] Params passed:", { userId, role, societyId, towerId, towerName, flatName });
 
@@ -63,14 +66,19 @@ export function usePassesHistory(
 
       if (role === "Resident" && societyId) {
         if (societyId !== "mock-soc-1") {
-          // console.log(`DEBUG [usePassesHistory] Querying passes for society ID: ${societyId}`);
+          // Resident queries all passes in their society from DB, then filters in-memory to support legacy data
           query = query.eq("resident_details->>societyId", societyId);
-        } else {
-          // console.log("DEBUG [usePassesHistory] Mock mode (mock-soc-1) detected. Querying ALL passes from database.");
+        }
+      } else if (role === "Admin" && societyId) {
+        if (societyId !== "mock-soc-1") {
+          // Admin sees all passes in their society
+          query = query.eq("resident_details->>societyId", societyId);
         }
       } else {
-        // console.log(`DEBUG [usePassesHistory] Querying passes created by user ID: ${userId}`);
-        // query = query.eq('user_id', userId);
+        // Fallback for guests/others (only show passes they created)
+        if (userId) {
+          query = query.eq("user_id", userId);
+        }
       }
 
       const { data, error } = await query.order("created_at", {
@@ -94,30 +102,28 @@ export function usePassesHistory(
             return true;
           }
 
-          const matchesUser = pass.user_id === userId;
-
-          const passTower = (pass.tower_no || "").trim().toLowerCase();
-          const matchTower =
-            (towerId && passTower === towerId.trim().toLowerCase()) ||
-            (towerName && passTower === towerName.trim().toLowerCase());
-
-          const matchFlat =
-            (pass.flat_no || "").trim().toLowerCase() ===
-            flatName.trim().toLowerCase();
-
-          const keep = matchesUser || (matchTower && matchFlat);
-          if (!keep) {
-            // console.log(`DEBUG [usePassesHistory] Filtered out pass ${pass.id}. Matches:`, {
-            //   matchesUser,
-            //   matchTower,
-            //   matchFlat,
-            //   passTower,
-            //   passFlat: pass.flat_no
-            // });
-          } else {
-            // console.log(`DEBUG [usePassesHistory] Keeping pass ${pass.id} (Visitor: ${pass.visitor_name})`);
+          // 1. If resident_id matches the userId, keep it
+          if (pass.resident_id === userId) {
+            return true;
           }
-          return keep;
+
+          // 2. If resident_id is not set, use legacy tower/flat matching fallback
+          if (!pass.resident_id) {
+            const matchesUser = pass.user_id === userId;
+
+            const passTower = (pass.tower_no || "").trim().toLowerCase();
+            const matchTower =
+              (towerId && passTower === towerId.trim().toLowerCase()) ||
+              (towerName && passTower === towerName.trim().toLowerCase());
+
+            const matchFlat =
+              (pass.flat_no || "").trim().toLowerCase() ===
+              flatName.trim().toLowerCase();
+
+            return matchesUser || (matchTower && matchFlat);
+          }
+
+          return false;
         });
         // console.log(`DEBUG [usePassesHistory] Returning ${filtered.length} passes after filter.`);
         return filtered as VisitorPass[];
@@ -125,8 +131,8 @@ export function usePassesHistory(
 
       return data as VisitorPass[];
     },
-    enabled: !!userId,
-    refetchInterval: 4000, // Poll every 4 seconds to guarantee always updated data
+    enabled: !!userId && (enabledFlag !== false),
+    refetchInterval: (enabledFlag !== false) ? 4000 : false, // Poll every 4 seconds only if enabled/focused
   });
 }
 
@@ -214,6 +220,9 @@ export function useCreatePass() {
             }
 
             if (targetUserId) {
+              // Set resident_id to targetUserId (flat_admin_id with fallback to member user_id)
+              finalPassData.resident_id = targetUserId;
+
               const { data: userData } = await supabase
                 .from("users")
                 .select("full_name, email, phone")
@@ -461,5 +470,184 @@ export function useRegisterProfile() {
       // Save profile to Zustand guest store
       await setGuestProfile(profileData);
     },
+  });
+}
+
+// 4. Update Pass Status Mutation Hook (Approve/Reject)
+export function useUpdatePassStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      passId,
+      status,
+      visitorEmail,
+    }: {
+      passId: string;
+      status: "Approved" | "Rejected";
+      visitorEmail: string;
+    }) => {
+      const { error } = await supabase
+        .from("requestpasses")
+        .update({ status })
+        .eq("id", passId);
+
+      if (error) throw error;
+
+      const title =
+        status === "Approved" ? "Pass Approved 🎟️" : "Pass Rejected ❌";
+      const body =
+        status === "Approved"
+          ? "Your request to visit has been approved by the resident."
+          : "Your request to visit was rejected by the resident.";
+      const screen = "/request-pass";
+
+      // Fetch the guest's push token from guestusers table using email
+      try {
+        const { data: guestData } = await supabase
+          .from("guestusers")
+          .select("id, notification_token")
+          .eq("email", visitorEmail)
+          .maybeSingle();
+
+        if (guestData) {
+          if (guestData.notification_token) {
+            await sendPushNotification({
+              token: guestData.notification_token,
+              title,
+              body,
+              data: {
+                screen,
+                url: screen,
+              },
+            });
+          }
+
+          // Notify the guest in push_notifications table
+          await supabase.from("push_notifications").insert({
+            user_id: guestData.id,
+            title,
+            body,
+            screen,
+            status: "Sent",
+          });
+        }
+      } catch (pushErr) {
+        console.warn("Failed to send push notification to guest:", pushErr);
+      }
+    },
+    onSuccess: (_, variables) => {
+      Alert.alert(
+        "Success",
+        `Visitor pass has been ${variables.status.toLowerCase()}.`,
+      );
+      queryClient.invalidateQueries({ queryKey: ["passesHistory"] });
+      queryClient.invalidateQueries({ queryKey: ["activeInsideVisitors"] });
+    },
+    onError: (err: any) => {
+      Alert.alert(
+        "Error",
+        err.message || "Failed to update visitor pass status.",
+      );
+    },
+  });
+}
+
+// 5. Active Inside Visitors Query Hook
+export function useActiveInsideVisitors(
+  userId: string | undefined,
+  societyId: string | undefined,
+  enabledFlag?: boolean,
+) {
+  return useQuery<any[]>({
+    queryKey: ["activeInsideVisitors", userId, societyId],
+    queryFn: async () => {
+      if (!userId || !societyId) return [];
+
+      // Mock Mode Check
+      if (societyId === "mock-soc-1") {
+        return [
+          {
+            id: "mock-active-1",
+            visitor_name: "Rahul Verma",
+            designation: "Guest",
+            verified_at: new Date().toISOString(),
+          }
+        ];
+      }
+
+      // 1. Fetch societymembers.id for this resident
+      const { data: memberData, error: memberErr } = await supabase
+        .from("societymembers")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("society_id", societyId)
+        .maybeSingle();
+
+      if (memberErr || !memberData) {
+        return [];
+      }
+
+      const memberId = memberData.id;
+
+      // 2. Fetch all visitor logs for this resident
+      const { data: logs, error: logsErr } = await supabase
+        .from("visitor_logs")
+        .select(`
+          id,
+          action_type,
+          created_at,
+          gate_name,
+          requestpasses (
+            id,
+            visitor_name,
+            visitor_phone,
+            visitor_email,
+            designation,
+            tower_no,
+            flat_no,
+            created_at
+          )
+        `)
+        .eq("resident_id", memberId)
+        .order("created_at", { ascending: false });
+
+      if (logsErr || !logs) {
+        return [];
+      }
+
+      // 3. Group by pass_id and filter for checked-in (Inside) visitors
+      const latestLogMap: Record<string, any> = {};
+      const activeVisitors: any[] = [];
+
+      for (const log of logs) {
+        const pass = log.requestpasses as any;
+        if (!pass) continue;
+
+        if (!(pass.id in latestLogMap)) {
+          latestLogMap[pass.id] = log.action_type;
+
+          if (log.action_type === "Check-in") {
+            activeVisitors.push({
+              id: pass.id,
+              visitor_name: pass.visitor_name,
+              designation: pass.designation,
+              tower_no: pass.tower_no,
+              flat_no: pass.flat_no,
+              verified_at: log.created_at,
+              created_at: pass.created_at,
+              status: "Verified",
+              visitor_phone: pass.visitor_phone,
+              visitor_email: pass.visitor_email,
+              gate: log.gate_name,
+            });
+          }
+        }
+      }
+
+      return activeVisitors;
+    },
+    enabled: !!userId && !!societyId && (enabledFlag !== false),
+    refetchInterval: (enabledFlag !== false) ? 4000 : false, // Poll every 4 seconds only if enabled/focused
   });
 }

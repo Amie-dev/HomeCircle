@@ -9,12 +9,23 @@ import { usePassesHistory } from "../../../hooks/useRequestPasses";
 import { useProfileStore } from "../../../store/useProfileStore";
 import { theme } from "../../../theme";
 
+import { useIsFocused } from "@react-navigation/native";
+
 export default function ResidentDashboard() {
   const router = useRouter();
   const { profile, clearProfile } = useProfileStore();
+  const isFocused = useIsFocused();
 
   // Fetch passes history to count active/pending and display recent activity
-  const { data: historyList = [], isLoading } = usePassesHistory(profile?.id);
+  const { data: historyList = [], isLoading } = usePassesHistory(
+    profile?.id,
+    profile?.role,
+    profile?.societyId,
+    profile?.towerId,
+    profile?.towerName,
+    profile?.flatName,
+    isFocused,
+  );
 
   // Live pending count
   const pendingPasses = historyList.filter(pass => pass.status === "Pending");

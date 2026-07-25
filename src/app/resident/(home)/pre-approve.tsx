@@ -70,6 +70,7 @@ export default function PreApproveGuestScreen() {
     createPass.mutate({
       passData: {
         user_id: profile.id,
+        resident_id: profile.id,
         visitor_name: guestName,
         visitor_email: "",
         visitor_phone: mobileNumber,

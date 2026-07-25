@@ -1,8 +1,12 @@
 import { MaterialIcons } from "@expo/vector-icons";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { supabase } from "../../../../utils/supabase";
+import VisitorDetailModal from "../../../components/VisitorDetailModal";
+import { usePassesHistory, useUpdatePassStatus, useActiveInsideVisitors } from "../../../hooks/useRequestPasses";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useIsFocused } from "@react-navigation/native";
 import {
   ActivityIndicator,
   Alert,
@@ -15,10 +19,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { sendPushNotification } from "../../../../utils/notificationService";
-import { supabase } from "../../../../utils/supabase";
-import VisitorDetailModal from "../../../components/VisitorDetailModal";
-import { usePassesHistory } from "../../../hooks/useRequestPasses";
+
 import { useProfileStore } from "../../../store/useProfileStore";
 import { theme } from "../../../theme";
 
@@ -114,48 +115,56 @@ export default function VisitorsScreen() {
     outputRange: ["0deg", "360deg"],
   });
 
-  console.log("DEBUG [visitors.tsx] Render state:", {
-    profileId: profile?.id,
-    role: profile?.role,
-    societyId: profile?.societyId,
-    towerId: profile?.towerId,
-    towerName: profile?.towerName,
-    flatName: profile?.flatName,
-  });
+  const isFocused = useIsFocused();
+
+  if (isFocused) {
+    console.log("DEBUG [visitors.tsx] Render state:", {
+      profileId: profile?.id,
+      role: profile?.role,
+      societyId: profile?.societyId,
+      towerId: profile?.towerId,
+      towerName: profile?.towerName,
+      flatName: profile?.flatName,
+    });
+  }
 
   // Fetch visitor history/live data
-  // const { data: historyList = [], isLoading, isFetching, refetch } = usePassesHistory(
-  //   profile?.id,
-  //   profile?.role,
-  //   profile?.societyId,
-  //   profile?.towerId,
-  //   profile?.towerName,
-  //   profile?.flatName,
-  // );
-  // Fetch passes history to count active/pending and display recent activity
-  const { data: historyList = [], isLoading, isFetching, refetch } = usePassesHistory(profile?.id);
+  const { data: historyList = [], isLoading, isFetching, refetch } = usePassesHistory(
+    profile?.id,
+    profile?.role,
+    profile?.societyId,
+    profile?.towerId,
+    profile?.towerName,
+    profile?.flatName,
+    isFocused,
+  );
+
+  // Fetch active visitors inside from visitor_logs
+  const { data: verifiedVisitors = [] } = useActiveInsideVisitors(
+    profile?.id,
+    profile?.societyId,
+    isFocused,
+  );
   // console.log({
   //   historyList
   // })
   // Live pending count
   // const pendingPasses = historyList.filter(pass => pass.status === "Pending");
 
-  useFocusEffect(
-    useCallback(() => {
-      refetch();
-    }, [refetch])
-  );
 
-  console.log(
-    "DEBUG [visitors.tsx] Passes history list count:",
-    historyList.length,
-    "isLoading:",
-    isLoading,
-  );
 
-  // Subscribe to realtime updates for requestpasses table
+  if (isFocused) {
+    console.log(
+      "DEBUG [visitors.tsx] Passes history list count:",
+      historyList.length,
+      "isLoading:",
+      isLoading,
+    );
+  }
+
+  // Subscribe to realtime updates for requestpasses and visitor_logs tables
   useEffect(() => {
-    if (!profile?.id) return;
+    if (!profile?.id || !isFocused) return;
 
     const channel = supabase
       .channel(`realtime-visitor-passes-${profile.id}`)
@@ -166,9 +175,23 @@ export default function VisitorsScreen() {
           schema: "public",
           table: "requestpasses",
         },
-        (payload) => {
+        (payload: any) => {
           console.log("DEBUG Realtime visitor pass change received:", payload.eventType);
           queryClient.invalidateQueries({ queryKey: ["passesHistory"] });
+          queryClient.invalidateQueries({ queryKey: ["activeInsideVisitors"] });
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "visitor_logs",
+        },
+        (payload: any) => {
+          console.log("DEBUG Realtime visitor log change received:", payload.eventType);
+          queryClient.invalidateQueries({ queryKey: ["passesHistory"] });
+          queryClient.invalidateQueries({ queryKey: ["activeInsideVisitors"] });
         },
       )
       .subscribe();
@@ -176,14 +199,9 @@ export default function VisitorsScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profile?.id]);
+  }, [profile?.id, isFocused]);
 
-  // Auto-refresh when screen comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      queryClient.invalidateQueries({ queryKey: ["passesHistory"] });
-    }, []),
-  );
+
 
   // Spin icon while fetching (covers both initial load AND manual refresh)
   useEffect(() => {
@@ -201,6 +219,7 @@ export default function VisitorsScreen() {
     setIsRefreshing(true);
     try {
       await queryClient.invalidateQueries({ queryKey: ["passesHistory"] });
+      await queryClient.invalidateQueries({ queryKey: ["activeInsideVisitors"] });
     } finally {
       // React Query handles the loading state; reset our flag after a short delay
       setTimeout(() => setIsRefreshing(false), 800);
@@ -208,79 +227,7 @@ export default function VisitorsScreen() {
   };
 
   // Mutation to approve/reject passes
-  const updatePassStatusMutation = useMutation({
-    mutationFn: async ({
-      passId,
-      status,
-      visitorEmail,
-    }: {
-      passId: string;
-      status: "Approved" | "Rejected";
-      visitorEmail: string;
-    }) => {
-      const { error } = await supabase
-        .from("requestpasses")
-        .update({ status })
-        .eq("id", passId);
-
-      if (error) throw error;
-
-      const title =
-        status === "Approved" ? "Pass Approved 🎟️" : "Pass Rejected ❌";
-      const body =
-        status === "Approved"
-          ? "Your request to visit has been approved by the resident."
-          : "Your request to visit was rejected by the resident.";
-      const screen = "/request-pass";
-
-      // Fetch the guest's push token from guestusers table using email
-      try {
-        const { data: guestData } = await supabase
-          .from("guestusers")
-          .select("id, notification_token")
-          .eq("email", visitorEmail)
-          .maybeSingle();
-        console.log("visitortsx line 115", { guestData });
-        if (guestData) {
-          if (guestData.notification_token) {
-            await sendPushNotification({
-              token: guestData.notification_token,
-              title,
-              body,
-              data: {
-                screen,
-                url: screen,
-              },
-            });
-          }
-
-          // Notify the guest in push_notifications table
-          await supabase.from("push_notifications").insert({
-            user_id: guestData.id,
-            title,
-            body,
-            screen,
-            status: "Sent",
-          });
-        }
-      } catch (pushErr) {
-        console.warn("Failed to send push notification to guest:", pushErr);
-      }
-    },
-    onSuccess: (_, variables) => {
-      Alert.alert(
-        "Success",
-        `Visitor pass has been ${variables.status.toLowerCase()}.`,
-      );
-      queryClient.invalidateQueries({ queryKey: ["passesHistory"] });
-    },
-    onError: (err: any) => {
-      Alert.alert(
-        "Error",
-        err.message || "Failed to update visitor pass status.",
-      );
-    },
-  });
+  const updatePassStatusMutation = useUpdatePassStatus();
 
   const handleAction = (
     passId: string,
@@ -351,9 +298,6 @@ export default function VisitorsScreen() {
   const upcomingGuests = historyList.filter(
     (pass) =>
       pass.status === "Approved" && new Date(pass.expiry_time) > new Date(),
-  );
-  const verifiedVisitors = historyList.filter(
-    (pass) => pass.status === "Verified",
   );
 
   // Visual mock data matching HTML exactly
