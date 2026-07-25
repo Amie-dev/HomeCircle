@@ -32,6 +32,11 @@ export interface VisitorPass {
   created_at: string;
   user_id: string;
   resident_id?: string | null;
+  visitor_logs?: {
+    id: string;
+    action_type: string;
+    created_at: string;
+  }[];
 }
 
 // 1. Fetch History Query Hook
@@ -62,7 +67,16 @@ export function usePassesHistory(
         return [];
       }
 
-      let query = supabase.from("requestpasses").select("*");
+      let query = supabase
+        .from("requestpasses")
+        .select(`
+          *,
+          visitor_logs (
+            id,
+            action_type,
+            created_at
+          )
+        `);
 
       if (role === "Resident" && societyId) {
         if (societyId !== "mock-soc-1") {
@@ -557,10 +571,13 @@ export function useUpdatePassStatus() {
 export function useActiveInsideVisitors(
   userId: string | undefined,
   societyId: string | undefined,
+  towerId?: string,
+  towerName?: string,
+  flatName?: string,
   enabledFlag?: boolean,
 ) {
   return useQuery<any[]>({
-    queryKey: ["activeInsideVisitors", userId, societyId],
+    queryKey: ["activeInsideVisitors", userId, societyId, towerId, towerName, flatName],
     queryFn: async () => {
       if (!userId || !societyId) return [];
 
@@ -577,20 +594,19 @@ export function useActiveInsideVisitors(
       }
 
       // 1. Fetch societymembers.id for this resident
-      const { data: memberData, error: memberErr } = await supabase
+      let memberId: string | null = null;
+      const { data: memberData } = await supabase
         .from("societymembers")
         .select("id")
         .eq("user_id", userId)
         .eq("society_id", societyId)
         .maybeSingle();
 
-      if (memberErr || !memberData) {
-        return [];
+      if (memberData) {
+        memberId = memberData.id;
       }
 
-      const memberId = memberData.id;
-
-      // 2. Fetch all visitor logs for this resident
+      // 2. Fetch all visitor logs in this society (we will filter for the resident in-memory to support legacy data)
       const { data: logs, error: logsErr } = await supabase
         .from("visitor_logs")
         .select(`
@@ -598,7 +614,8 @@ export function useActiveInsideVisitors(
           action_type,
           created_at,
           gate_name,
-          requestpasses (
+          resident_id,
+          requestpasses!inner (
             id,
             visitor_name,
             visitor_phone,
@@ -606,21 +623,54 @@ export function useActiveInsideVisitors(
             designation,
             tower_no,
             flat_no,
-            created_at
+            created_at,
+            resident_id
           )
         `)
-        .eq("resident_id", memberId)
+        .eq("requestpasses.resident_details->>societyId", societyId)
         .order("created_at", { ascending: false });
 
       if (logsErr || !logs) {
         return [];
       }
 
-      // 3. Group by pass_id and filter for checked-in (Inside) visitors
+      // 3. Filter logs in-memory for this resident
+      const filteredLogs = logs.filter((log) => {
+        const pass = log.requestpasses as any;
+        if (!pass) return false;
+
+        // A. Match by resident_id in visitor_logs (newest way)
+        if (memberId && log.resident_id === memberId) {
+          return true;
+        }
+
+        // B. Match by resident_id in requestpasses (new way)
+        if (pass.resident_id === userId) {
+          return true;
+        }
+
+        // C. Match by flat and tower (legacy fallback)
+        if (flatName) {
+          const passTower = (pass.tower_no || "").trim().toLowerCase();
+          const matchTower =
+            (towerId && passTower === towerId.trim().toLowerCase()) ||
+            (towerName && passTower === towerName.trim().toLowerCase());
+
+          const matchFlat =
+            (pass.flat_no || "").trim().toLowerCase() ===
+            flatName.trim().toLowerCase();
+
+          return (matchTower && matchFlat);
+        }
+
+        return false;
+      });
+
+      // 4. Group by pass_id and filter for checked-in (Inside) visitors
       const latestLogMap: Record<string, any> = {};
       const activeVisitors: any[] = [];
 
-      for (const log of logs) {
+      for (const log of filteredLogs) {
         const pass = log.requestpasses as any;
         if (!pass) continue;
 

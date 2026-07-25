@@ -1,8 +1,9 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useState } from "react";
-import { Alert, Image, ImageBackground, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Image, ImageBackground, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { supabase } from "../../../../utils/supabase";
 import VisitorDetailModal from "../../../components/VisitorDetailModal";
 import { usePassesHistory } from "../../../hooks/useRequestPasses";
@@ -15,9 +16,10 @@ export default function ResidentDashboard() {
   const router = useRouter();
   const { profile, clearProfile } = useProfileStore();
   const isFocused = useIsFocused();
+  const queryClient = useQueryClient();
 
   // Fetch passes history to count active/pending and display recent activity
-  const { data: historyList = [], isLoading } = usePassesHistory(
+  const { data: historyList = [], isLoading, refetch } = usePassesHistory(
     profile?.id,
     profile?.role,
     profile?.societyId,
@@ -36,54 +38,106 @@ export default function ResidentDashboard() {
   const [guardsCount, setGuardsCount] = useState(0);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedLog, setSelectedLog] = useState<any>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadDashboardStats = async () => {
+    if (!profile?.id || !profile?.societyId) return;
+    try {
+      // 1. Get flat_id for the resident
+      const { data: memberData } = await supabase
+        .from("societymembers")
+        .select("flat_id")
+        .eq("user_id", profile.id)
+        .eq("society_id", profile.societyId)
+        .maybeSingle();
+
+      if (memberData?.flat_id) {
+        // Query pending dues
+        const { data: invoices } = await supabase
+          .from("maintenance_invoices")
+          .select("amount")
+          .eq("flat_id", memberData.flat_id)
+          .eq("status", "Pending");
+
+        if (invoices) {
+          const sum = invoices.reduce((acc, curr) => acc + Number(curr.amount), 0);
+          setDuesAmount(sum);
+        }
+      }
+
+      // 2. Query notices count
+      const { count: notices } = await supabase
+        .from("notices")
+        .select("*", { count: "exact", head: true })
+        .eq("society_id", profile.societyId);
+
+      setNoticesCount(notices || 0);
+
+      // 3. Query active guards
+      const { count: guards } = await supabase
+        .from("guard_assignments")
+        .select("*", { count: "exact", head: true });
+
+      setGuardsCount(guards || 0);
+    } catch (error) {
+      console.error("Error loading dashboard stats:", error);
+    }
+  };
 
   useEffect(() => {
-    if (!profile?.id || !profile?.societyId) return;
-
-    const loadDashboardStats = async () => {
-      try {
-        // 1. Get flat_id for the resident
-        const { data: memberData } = await supabase
-          .from("societymembers")
-          .select("flat_id")
-          .eq("user_id", profile.id)
-          .maybeSingle();
-
-        if (memberData?.flat_id) {
-          // Query pending dues
-          const { data: invoices } = await supabase
-            .from("maintenance_invoices")
-            .select("amount")
-            .eq("flat_id", memberData.flat_id)
-            .eq("status", "Pending");
-
-          if (invoices) {
-            const sum = invoices.reduce((acc, curr) => acc + Number(curr.amount), 0);
-            setDuesAmount(sum);
-          }
-        }
-
-        // 2. Query notices count
-        const { count: notices } = await supabase
-          .from("notices")
-          .select("*", { count: "exact", head: true })
-          .eq("society_id", profile.societyId);
-
-        setNoticesCount(notices || 0);
-
-        // 3. Query active guards
-        const { count: guards } = await supabase
-          .from("guard_assignments")
-          .select("*", { count: "exact", head: true });
-
-        setGuardsCount(guards || 0);
-      } catch (error) {
-        console.error("Error loading dashboard stats:", error);
-      }
-    };
-
     loadDashboardStats();
   }, [profile?.id, profile?.societyId]);
+
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refetch(),
+        loadDashboardStats(),
+      ]);
+    } catch (err) {
+      console.error("Failed to refresh resident dashboard:", err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch]);
+
+  // Subscribe to realtime updates for requestpasses and visitor_logs tables on Dashboard
+  useEffect(() => {
+    if (!profile?.id || !isFocused) return;
+
+    const channel = supabase
+      .channel(`realtime-dashboard-passes-${profile.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "requestpasses",
+        },
+        (payload: any) => {
+          console.log("DEBUG [Dashboard] Realtime visitor pass change received:", payload.eventType);
+          queryClient.invalidateQueries({ queryKey: ["passesHistory"] });
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "visitor_logs",
+        },
+        (payload: any) => {
+          console.log("DEBUG [Dashboard] Realtime visitor log change received:", payload.eventType);
+          queryClient.invalidateQueries({ queryKey: ["passesHistory"] });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profile?.id, isFocused]);
 
   const handleSignOut = async () => {
     Alert.alert("Sign Out", "Are you sure you want to log out?", [
@@ -140,19 +194,21 @@ export default function ResidentDashboard() {
           guardGate: "Main Gate No. 1",
         });
       } else {
-        // Real DB item: Query pass details
+        // DB pass
         const pass = activity.rawPass;
         const typeMap: Record<string, any> = {
-          "Delivery": "Delivery",
-          "Guest": "Guest",
-          "Service": "Daily Help",
-          "Cab": "Cab"
+          Delivery: "Delivery",
+          Service: "Daily Help",
+          Guest: "Guest",
         };
+        const hasCheckedOut = pass.visitor_logs?.some((log: any) => log.action_type === "Check-out");
+        const actualStatus = hasCheckedOut ? "Exited" : (pass.status === "Verified" ? "Entered" : pass.status);
+
         setSelectedLog({
           id: pass.id,
           name: pass.visitor_name,
           type: typeMap[pass.designation] || "Guest",
-          status: pass.status === "Verified" ? "Entered" : pass.status,
+          status: actualStatus,
           icon: pass.designation === "Delivery" ? "delivery-dining" : pass.designation === "Service" ? "cleaning-services" : "person",
           avatar: null,
           vehicleNumber: pass.vehicle_number || "N/A",
@@ -218,15 +274,20 @@ export default function ResidentDashboard() {
 
   // Merge or show mock activities to match layout copy
   const activitiesToDisplay = historyList.length > 0
-    ? historyList.slice(0, 3).map(pass => ({
-      id: pass.id,
-      visitor_name: pass.visitor_name,
-      time: new Date(pass.created_at).toLocaleDateString("en-IN", { month: "short", day: "numeric" }) + ", " + new Date(pass.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
-      status: pass.status === "Verified" ? "Entered" : pass.status,
-      icon: pass.designation.toLowerCase().includes("delivery") ? "delivery-dining" : pass.designation.toLowerCase().includes("service") ? "cleaning-services" : "person",
-      avatar: null,
-      rawPass: pass,
-    }))
+    ? historyList.slice(0, 3).map(pass => {
+      const hasCheckedOut = pass.visitor_logs?.some((log: any) => log.action_type === "Check-out");
+      const actualStatus = hasCheckedOut ? "Exited" : (pass.status === "Verified" ? "Entered" : pass.status);
+
+      return {
+        id: pass.id,
+        visitor_name: pass.visitor_name,
+        time: new Date(pass.created_at).toLocaleDateString("en-IN", { month: "short", day: "numeric" }) + ", " + new Date(pass.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
+        status: actualStatus,
+        icon: pass.designation.toLowerCase().includes("delivery") ? "delivery-dining" : pass.designation.toLowerCase().includes("service") ? "cleaning-services" : "person",
+        avatar: null,
+        rawPass: pass,
+      };
+    })
     : mockRecentActivity;
 
   return (
@@ -257,7 +318,18 @@ export default function ResidentDashboard() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[theme.colors.primary]}
+            tintColor={theme.colors.primary}
+          />
+        }
+      >
         {/* Welcome Section */}
         <View style={styles.welcomeSection}>
           <Text style={styles.welcomeText}>Hello, {profile.fullName}</Text>

@@ -143,6 +143,9 @@ export default function VisitorsScreen() {
   const { data: verifiedVisitors = [] } = useActiveInsideVisitors(
     profile?.id,
     profile?.societyId,
+    profile?.towerId,
+    profile?.towerName,
+    profile?.flatName,
     isFocused,
   );
   // console.log({
